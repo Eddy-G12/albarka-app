@@ -16,6 +16,9 @@ from core.transactions import clean_transactions, build_transactions_workbook
 
 st.set_page_config(page_title="Transactions — ALBARKA", layout="wide")
 
+from core.ui import apply_theme, show_page_header
+apply_theme()
+
 require_role("super_admin")
 show_user_badge()
 

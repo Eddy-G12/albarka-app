@@ -17,6 +17,9 @@ from core.comparaison import build_comparative_workbook
 
 st.set_page_config(page_title="Étude comparative — ALBARKA", layout="wide")
 
+from core.ui import apply_theme, show_page_header
+apply_theme()
+
 require_role("super_admin", "admin")
 show_user_badge()
 

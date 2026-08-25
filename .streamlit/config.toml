@@ -1,0 +1,15 @@
+[theme]
+# Charte graphique ALBARKA
+# Jaune ALBARKA : #F5A623 | Noir : #1A1A1A | Blanc : #FFFFFF | Gris clair : #F8F9FA
+
+primaryColor        = "#F5A623"
+backgroundColor     = "#FFFFFF"
+secondaryBackgroundColor = "#F8F9FA"
+textColor           = "#1A1A1A"
+font                = "sans serif"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+headless = true

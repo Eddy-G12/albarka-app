@@ -25,6 +25,9 @@ from core.export import export_df_to_excel
 
 st.set_page_config(page_title="Cash Flow — ALBARKA", layout="wide")
 
+from core.ui import apply_theme, show_page_header
+apply_theme()
+
 require_role("super_admin", "admin")
 show_user_badge()
 

@@ -65,15 +65,37 @@ def logout():
 
 
 def show_login_form():
-    """Affiche le formulaire de connexion centré."""
+    """Affiche le formulaire de connexion centré avec logo et charte ALBARKA."""
+    # Import ici pour éviter la circularité (ui importe streamlit, pas auth)
+    from core.ui import apply_theme, show_login_logo
+
+    apply_theme()
+
     col_l, col_c, col_r = st.columns([1, 2, 1])
     with col_c:
-        st.markdown("## Connexion")
-        st.markdown("Entrez vos identifiants pour accéder à l'application.")
+        # Logo centré
+        show_login_logo()
+
+        st.markdown(
+            '<div class="login-container">',
+            unsafe_allow_html=True,
+        )
+        st.markdown("### Connexion")
+        st.markdown(
+            '<p style="color:#6C757D;font-size:0.9rem;margin-bottom:1.2rem;">'
+            "Entrez vos identifiants pour accéder à l'application."
+            "</p>",
+            unsafe_allow_html=True,
+        )
+
         with st.form("login_form", clear_on_submit=False):
             username = st.text_input("Identifiant", placeholder="ex. giovanni")
             password = st.text_input("Mot de passe", type="password")
-            submitted = st.form_submit_button("Se connecter", use_container_width=True)
+            submitted = st.form_submit_button(
+                "Se connecter",
+                use_container_width=True,
+                type="primary",
+            )
             if submitted:
                 if not username or not password:
                     st.error("Identifiant et mot de passe requis.")
@@ -81,6 +103,15 @@ def show_login_form():
                     st.rerun()
                 else:
                     st.error("Identifiant ou mot de passe incorrect.")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown(
+            '<p style="text-align:center;color:#6C757D;font-size:0.75rem;margin-top:1rem;">'
+            "ALBARKA · Application locale · Données confidentielles"
+            "</p>",
+            unsafe_allow_html=True,
+        )
 
 
 def require_auth():
@@ -106,18 +137,35 @@ def require_role(*roles: str):
 
 
 def show_user_badge():
-    """Affiche dans la sidebar le nom de l'utilisateur connecté + bouton déconnexion."""
+    """
+    Affiche dans la sidebar :
+      - Le logo ALBARKA (en haut, version blanche/inversée)
+      - Le nom et rôle de l'utilisateur connecté
+      - Le bouton de déconnexion
+    """
+    from core.ui import show_sidebar_logo
+
     user = get_current_user()
     if not user:
         return
+
     role_labels = {
         "super_admin": "Super Admin",
         "admin":       "Admin",
         "commercial":  "Commercial",
     }
+
     with st.sidebar:
-        st.markdown("---")
-        st.markdown(f"**{user['nom']}**")
-        st.caption(role_labels.get(user["role"], user["role"]))
+        # Logo en haut de la sidebar
+        show_sidebar_logo()
+
+        st.markdown(
+            f'<div class="user-badge">'
+            f'  <div class="user-badge-name">{user["nom"]}</div>'
+            f'  <div class="user-badge-role">{role_labels.get(user["role"], user["role"])}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("")  # espacement
         if st.button("Se déconnecter", use_container_width=True, key="btn_logout"):
             logout()

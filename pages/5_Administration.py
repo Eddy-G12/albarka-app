@@ -17,6 +17,9 @@ from core.auth import require_role, show_user_badge, get_current_user
 
 st.set_page_config(page_title="Administration — ALBARKA", layout="wide")
 
+from core.ui import apply_theme, show_page_header
+apply_theme()
+
 require_role("super_admin")
 show_user_badge()
 

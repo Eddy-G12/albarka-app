@@ -337,3 +337,97 @@ def compute_mom_multi(fichiers: list[dict]) -> dict:
         "constants_flop":  constants_flop,
         "dataframes":      dataframes,
     }
+
+
+# ---------------------------------------------------------------------------
+# Compatibilité v1 — fonctions sur transactions_momo (agrégats par commercial)
+# Conservées pour les pages Dashboard Global, Mon Dashboard, Comparaison MoM
+# et Réactivité Commerciale qui les importent encore.
+# ---------------------------------------------------------------------------
+
+from pathlib import Path as _Path
+
+
+def match_commercial_by_filename(nom_fichier: str, commerciaux: list) -> dict | None:
+    """
+    Tente de retrouver le commercial dont le dsm_name apparaît dans le nom
+    du fichier. Retourne None si aucune correspondance unique n'est trouvée.
+    (Conservé pour compatibilité avec pages/12_Reactivite_Commerciale.py)
+    """
+    base = _Path(nom_fichier).stem.upper()
+    correspondances = [c for c in commerciaux if c["dsm_name"].upper() in base]
+    if len(correspondances) == 1:
+        return correspondances[0]
+    return None
+
+
+def get_cashflow(mois: str = None, commercial_id: int = None) -> list:
+    """
+    Lit les agrégats cash in / cash out depuis la table transactions_momo
+    (données historiques — source : anciens imports CSV par commercial).
+    Filtrable par mois (AAAA-MM) et/ou commercial_id.
+    (Conservé pour compatibilité avec Dashboard Global, Mon Dashboard, MoM)
+    """
+    from core.db import get_connection
+    conn = get_connection()
+    q = """
+        SELECT t.*, c.dsm_name
+        FROM transactions_momo t
+        JOIN commerciaux c ON c.id = t.commercial_id
+        WHERE 1=1
+    """
+    params: list = []
+    if mois:
+        q += " AND t.mois = ?"
+        params.append(mois)
+    if commercial_id:
+        q += " AND t.commercial_id = ?"
+        params.append(commercial_id)
+    q += " ORDER BY c.dsm_name"
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def top_flop_cashflow(mois: str, type_flux: str, n: int = 20,
+                      ordre: str = "top") -> list:
+    """
+    Classement Top/Flop N des commerciaux depuis transactions_momo.
+    (Conservé pour compatibilité avec Dashboard Global et Mon Dashboard)
+    """
+    if type_flux not in ("cash_in", "cash_out"):
+        raise ValueError("type_flux doit être 'cash_in' ou 'cash_out'")
+    direction = "DESC" if ordre == "top" else "ASC"
+    from core.db import get_connection
+    conn = get_connection()
+    rows = conn.execute(f"""
+        SELECT t.*, c.dsm_name
+        FROM transactions_momo t
+        JOIN commerciaux c ON c.id = t.commercial_id
+        WHERE t.mois = ?
+        ORDER BY t.{type_flux} {direction}
+        LIMIT ?
+    """, (mois, n)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def list_alertes_seuil(mois: str) -> dict:
+    """
+    Alertes seuil sur transactions_momo (commerciaux, pas POS).
+    (Conservé pour compatibilité avec Dashboard Global)
+    """
+    from core.db import get_connection, get_seuil
+    seuil_in  = get_seuil("cash_in",  mois) or get_seuil("cash_in",  None)
+    seuil_out = get_seuil("cash_out", mois) or get_seuil("cash_out", None)
+    lignes    = get_cashflow(mois=mois)
+
+    val_ci  = seuil_in["valeur"]  if seuil_in  else None
+    val_co  = seuil_out["valeur"] if seuil_out else None
+
+    return {
+        "seuil_cash_in":                    val_ci,
+        "seuil_cash_out":                   val_co,
+        "commerciaux_sous_seuil_cash_in":   [r for r in lignes if val_ci  and r["cash_in"]  < val_ci],
+        "commerciaux_sous_seuil_cash_out":  [r for r in lignes if val_co and r["cash_out"] < val_co],
+    }

@@ -89,12 +89,17 @@ def _detect_mois_from_filename(nom: str) -> str | None:
 def read_sae_file(source, nom_fichier: str = "") -> pd.DataFrame:
     """
     Lit un fichier SAE MTN (.xlsx ou .csv).
+
+    Structure du fichier SAE :
+      - Feuille 1 (ex. "JULY ALBARKA") : résumé global agrégé → ignorée
+      - Feuille 2 (ex. "Sheet1")       : détail par POS (731 lignes) → celle qu'on lit
+
     Retourne un DataFrame avec les colonnes normalisées :
       acceptorid, agent_msisdn, agent_name, cash_in, cash_out
 
     `source` : chemin (str/Path), bytes, ou objet fichier.
     """
-    # Lecture
+    # Lecture des bytes
     if isinstance(source, (str, Path)):
         raw = Path(source).read_bytes()
     elif isinstance(source, bytes):
@@ -104,8 +109,9 @@ def read_sae_file(source, nom_fichier: str = "") -> pd.DataFrame:
         raw = source.read()
 
     ext = Path(nom_fichier).suffix.lower() if nom_fichier else ""
+
     if ext == ".csv" or (not ext and raw[:2] != b"\x50\x4b"):
-        # Tenter CSV avec différents séparateurs
+        # Fichier CSV
         for sep in (",", ";", "\t"):
             try:
                 df = pd.read_csv(BytesIO(raw), sep=sep, dtype=str)
@@ -114,29 +120,56 @@ def read_sae_file(source, nom_fichier: str = "") -> pd.DataFrame:
             except Exception:
                 continue
     else:
-        df = pd.read_excel(BytesIO(raw), dtype=str)
+        # Fichier Excel — lire la bonne feuille
+        # Le fichier SAE a toujours 2 feuilles :
+        #   - feuille 1 : résumé global (à ignorer)
+        #   - feuille 2 : détail POS (à lire)
+        xl = pd.ExcelFile(BytesIO(raw))
+        sheet_names = xl.sheet_names
 
-    # Normaliser les noms de colonnes
+        # Chercher "Sheet1" ou équivalent, sinon prendre la 2e feuille
+        target_sheet = None
+        for candidate in ["Sheet1", "sheet1", "SHEET1", "Feuil1", "Feuille1", "Data", "POS"]:
+            if candidate in sheet_names:
+                target_sheet = candidate
+                break
+
+        if target_sheet is None:
+            # Pas de nom connu → prendre la 2e feuille si elle existe, sinon la 1re
+            target_sheet = sheet_names[1] if len(sheet_names) > 1 else sheet_names[0]
+
+        df = pd.read_excel(BytesIO(raw), sheet_name=target_sheet, dtype=str)
+
+    # Normaliser les noms de colonnes (strip + lowercase pour la détection)
     df.columns = df.columns.str.strip()
 
-    col_id   = _find_col(list(df.columns), _COL_ACCEPTORID)
+    col_id     = _find_col(list(df.columns), _COL_ACCEPTORID)
     col_msisdn = _find_col(list(df.columns), _COL_MSISDN)
-    col_name = _find_col(list(df.columns), _COL_NAME)
-    col_ci   = _find_col(list(df.columns), _COL_CASH_IN)
-    col_co   = _find_col(list(df.columns), _COL_CASH_OUT)
+    col_name   = _find_col(list(df.columns), _COL_NAME)
+    col_ci     = _find_col(list(df.columns), _COL_CASH_IN)
+    col_co     = _find_col(list(df.columns), _COL_CASH_OUT)
 
     if not col_id or not col_ci:
         raise ValueError(
             f"Colonnes requises introuvables dans le fichier SAE.\n"
+            f"Feuille lue : '{target_sheet if 'target_sheet' in dir() else 'CSV'}'\n"
             f"Colonnes détectées : {list(df.columns)}\n"
             f"Attendu (au moins) : acceptorid + cash_in_com"
         )
 
     def _to_float(series: pd.Series) -> pd.Series:
+        """
+        Convertit une série de valeurs SAE en float.
+        Gère : "12,345", "- 0", "0", nombres entiers/décimaux.
+        """
         return (
             series.astype(str)
-            .str.replace(r"[\s,]", "", regex=True)
-            .str.replace(r"[^\d.\-]", "", regex=True)
+            .str.strip()
+            .str.replace(r"\s", "", regex=True)   # supprime tous les espaces (y compris dans "- 0")
+            .str.replace(",", "", regex=False)     # séparateurs de milliers
+            .str.replace(r"[^\d.\-]", "", regex=True)  # garde uniquement chiffres, point, signe
+            .replace("", "0")
+            .replace("-", "0")                    # cas "- 0" après nettoyage → "-" seul
             .pipe(pd.to_numeric, errors="coerce")
             .fillna(0.0)
         )
@@ -146,10 +179,14 @@ def read_sae_file(source, nom_fichier: str = "") -> pd.DataFrame:
     out["agent_msisdn"] = df[col_msisdn].astype(str).str.strip() if col_msisdn else ""
     out["agent_name"]   = df[col_name].astype(str).str.strip()   if col_name   else ""
     out["cash_in"]      = _to_float(df[col_ci])
-    out["cash_out"]     = _to_float(df[col_co]) if col_co else 0.0
+    out["cash_out"]     = _to_float(df[col_co]) if col_co else pd.Series(0.0, index=df.index)
 
     # Exclure les lignes sans acceptorid valide
-    out = out[out["acceptorid"].notna() & (out["acceptorid"] != "") & (out["acceptorid"] != "nan")]
+    out = out[
+        out["acceptorid"].notna()
+        & (out["acceptorid"] != "")
+        & (out["acceptorid"].str.lower() != "nan")
+    ]
     return out.reset_index(drop=True)
 
 

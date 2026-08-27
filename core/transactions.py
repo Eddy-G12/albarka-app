@@ -351,11 +351,12 @@ def extract_appro_from_workbook(wb_path, alias: str) -> list[dict]:
                         par_date[date_iso]["nb"] = int(v)
 
                 for date_iso, vals in par_date.items():
-                    if vals["montant"] > 0 or vals["nb"] > 0:
+                    montant_abs = abs(vals["montant"])  # toujours en valeur absolue
+                    if montant_abs > 0 or vals["nb"] > 0:
                         resultats.append({
                             "date_op": date_iso,
                             "type_op": type_op,
-                            "montant": vals["montant"],
+                            "montant": montant_abs,
                             "nb_ops":  vals["nb"],
                         })
                 break

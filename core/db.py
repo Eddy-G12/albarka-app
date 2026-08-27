@@ -274,6 +274,16 @@ def _run_migrations(conn):
     except Exception:
         pass  # colonne déjà présente
 
+    # Index UNIQUE sur appro (remplace la contrainte UNIQUE manquante sur les anciennes bases)
+    try:
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_appro_unique
+            ON appro(commercial_id, date_op, type_op)
+        """)
+        conn.commit()
+    except Exception:
+        pass  # index déjà présent ou conflit de données
+
 
 # ---------------------------------------------------------------------------
 # Gestion des mots de passe

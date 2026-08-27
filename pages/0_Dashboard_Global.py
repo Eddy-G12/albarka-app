@@ -54,12 +54,6 @@ from core.cashflow import get_cashflow, top_flop_cashflow, list_alertes_seuil
 from core.appro import get_appro_par_mois, get_mois_disponibles_appro
 
 # ──────────────────────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="Dashboard Global — ALBARKA",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
 from core.ui import apply_theme, show_page_header
 apply_theme()
 

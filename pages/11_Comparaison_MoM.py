@@ -23,8 +23,6 @@ from core.cashflow import get_cashflow
 from core.appro import get_appro_par_mois, get_mois_disponibles_appro
 from core.export import export_df_to_excel
 
-st.set_page_config(page_title="Comparaisons MoM — ALBARKA", layout="wide")
-
 from core.ui import apply_theme, show_page_header
 apply_theme()
 

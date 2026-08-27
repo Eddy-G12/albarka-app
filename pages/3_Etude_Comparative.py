@@ -15,8 +15,6 @@ from core.auth import require_role, show_user_badge
 from core.qr_code import read_qr_file, classify, build_report_workbook
 from core.comparaison import build_comparative_workbook
 
-st.set_page_config(page_title="Étude comparative — ALBARKA", layout="wide")
-
 from core.ui import apply_theme, show_page_header
 apply_theme()
 

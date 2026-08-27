@@ -14,8 +14,6 @@ from core import db
 from core.auth import require_role, show_user_badge
 from core.qr_code import read_qr_file, classify, build_report_workbook
 
-st.set_page_config(page_title="Suivi QR Code — ALBARKA", layout="wide")
-
 from core.ui import apply_theme, show_page_header
 apply_theme()
 

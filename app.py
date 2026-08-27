@@ -1,116 +1,84 @@
 """
-app.py — Point d'entrée de l'application ALBARKA
-=================================================
+app.py — Point d'entrée unique de l'application ALBARKA
+=========================================================
 
-Ce fichier gère uniquement la page d'accueil / connexion.
-Les fonctionnalités sont dans le dossier pages/ :
-  - 0_Dashboard_Global.py    (Super Admin / Admin)
-  - 1_Transactions.py        (Super Admin)
-  - 2_Suivi_QR_Code.py       (Super Admin)
-  - 3_Etude_Comparative.py   (Super Admin / Admin)
-  - 4_Historique.py          (Super Admin / Admin)
-  - 5_Administration.py      (Super Admin)
-  - 6_Cash_Flow.py           (Super Admin / Admin)
-  - 7_Dashboard_QR_Admin.py  (Super Admin / Admin)
-  - 8_Mon_Dashboard.py       (Commercial)
-  - 9_Portefeuilles.py       (Super Admin / Admin)
-  - 10_Appro_Destockage.py   (Super Admin / Admin)
-  - 11_Comparaison_MoM.py    (Tous)
-  - 12_Reactivite_Commerciale.py (Super Admin / Admin)
+Gère :
+  1. La page de connexion (affichée si non authentifié — aucune navigation visible)
+  2. La construction dynamique du menu de navigation selon le rôle connecté
+     via st.navigation() — chaque rôle ne voit QUE ses pages autorisées
 
 Lancement : streamlit run app.py
+
+Navigation par rôle :
+  super_admin → toutes les pages
+  admin       → dashboard global, étude comparative, historique, cash flow,
+                dashboard QR, portefeuilles, appro, MoM, réactivité
+  commercial  → mon dashboard, MoM (ses données)
 """
 
 import streamlit as st
 from core import db
-from core.auth import require_auth, show_user_badge, get_current_user, get_role
-from core.ui import apply_theme, show_page_header, show_login_logo
+from core.auth import get_current_user, get_role, show_login_page
+from core.ui import apply_theme
 
 st.set_page_config(
-    page_title="ALBARKA — Pilotage réseau agents",
+    page_title="ALBARKA",
     page_icon="🟡",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Thème ALBARKA
 apply_theme()
-
 db.init_db()
 
-# --- Connexion obligatoire ---
-require_auth()
+# ── Si non authentifié : afficher uniquement la page de login ───────────────
+# Aucune navigation, aucun nom de page, sidebar vide.
+if not get_current_user():
+    show_login_page()
+    st.stop()
 
-# --- Badge utilisateur dans la sidebar ---
-show_user_badge()
-
-# --- Accueil selon le rôle ---
-user = get_current_user()
+# ── Utilisateur connecté : construire la navigation selon le rôle ────────────
 role = get_role()
 
-role_labels = {
-    "super_admin": "Super Administrateur",
-    "admin":       "Administrateur",
-    "commercial":  "Commercial",
+# Définition de toutes les pages avec leur rôle requis
+# Chaque entrée : (titre_menu, chemin_fichier, icone)
+_ALL_PAGES = {
+    "super_admin": [
+        st.Page("pages/accueil.py",                   title="Accueil",                  icon="🏠", default=True),
+        st.Page("pages/0_Dashboard_Global.py",         title="Dashboard Global",          icon="📊"),
+        st.Page("pages/1_Transactions.py",             title="Transactions",              icon="💳"),
+        st.Page("pages/2_Suivi_QR_Code.py",            title="Suivi QR Code",             icon="📱"),
+        st.Page("pages/3_Etude_Comparative.py",        title="Étude Comparative",         icon="🔍"),
+        st.Page("pages/4_Historique.py",               title="Historique",                icon="📋"),
+        st.Page("pages/6_Cash_Flow.py",                title="Cash Flow",                 icon="💰"),
+        st.Page("pages/7_Dashboard_QR_Admin.py",       title="Dashboard QR Code",         icon="📈"),
+        st.Page("pages/9_Portefeuilles.py",            title="Portefeuilles",             icon="👥"),
+        st.Page("pages/10_Appro_Destockage.py",        title="Appro / Destockage",        icon="📦"),
+        st.Page("pages/11_Comparaison_MoM.py",         title="Comparaisons MoM",          icon="📅"),
+        st.Page("pages/12_Reactivite_Commerciale.py",  title="Réactivité Commerciale",    icon="⚡"),
+        st.Page("pages/13_MoMo_App.py",               title="MoMo App (Parrainages)",    icon="🤝"),
+        st.Page("pages/14_Suivi_Personnes.py",         title="Suivi Personnes",           icon="👤"),
+        st.Page("pages/5_Administration.py",           title="Administration",            icon="⚙️"),
+    ],
+    "admin": [
+        st.Page("pages/accueil.py",                   title="Accueil",                  icon="🏠", default=True),
+        st.Page("pages/0_Dashboard_Global.py",         title="Dashboard Global",          icon="📊"),
+        st.Page("pages/3_Etude_Comparative.py",        title="Étude Comparative",         icon="🔍"),
+        st.Page("pages/4_Historique.py",               title="Historique",                icon="📋"),
+        st.Page("pages/6_Cash_Flow.py",                title="Cash Flow",                 icon="💰"),
+        st.Page("pages/7_Dashboard_QR_Admin.py",       title="Dashboard QR Code",         icon="📈"),
+        st.Page("pages/9_Portefeuilles.py",            title="Portefeuilles",             icon="👥"),
+        st.Page("pages/10_Appro_Destockage.py",        title="Appro / Destockage",        icon="📦"),
+        st.Page("pages/11_Comparaison_MoM.py",         title="Comparaisons MoM",          icon="📅"),
+        st.Page("pages/12_Reactivite_Commerciale.py",  title="Réactivité Commerciale",    icon="⚡"),
+    ],
+    "commercial": [
+        st.Page("pages/accueil.py",                   title="Accueil",                  icon="🏠", default=True),
+        st.Page("pages/8_Mon_Dashboard.py",            title="Mon Dashboard",             icon="👤"),
+        st.Page("pages/11_Comparaison_MoM.py",         title="Comparaisons MoM",          icon="📅"),
+    ],
 }
 
-# En-tête avec logo
-show_page_header(
-    "Système de pilotage réseau agents",
-    f"Bienvenue, {user['nom']} · {role_labels.get(role, role)}",
-)
-
-st.divider()
-
-if role == "super_admin":
-    st.markdown("""
-    ### Accès disponibles
-    Utilisez le menu de navigation à gauche pour accéder aux modules :
-
-    | Module | Description |
-    |---|---|
-    | **Dashboard Global** | Vue consolidée de toutes les performances du réseau |
-    | **Transactions** | Import des listings Mobile Money, tableaux croisés |
-    | **Suivi QR Code** | Classification des agents par statut d'utilisation QR |
-    | **Étude comparative** | Comparaison de deux dates QR Code |
-    | **Historique** | Consultation des traitements passés |
-    | **Administration** | Gestion des utilisateurs et configuration des seuils |
-    | **Cash Flow** | Import listings MoMo, classements Top/Flop, alertes seuil |
-    | **Dashboard QR Code** | Vue agrégée réseau QR Code (métriques, segments, DSM) |
-    | **Réactivité Commerciale** | Transactions/jour, clients/jour, temps mort, temps de recharge |
-    | **Portefeuilles** | Gestion des portefeuilles clients par commercial |
-    | **Appro / Destockage** | Suivi des approvisionnements et destockages |
-    | **Comparaisons MoM** | Évolutions mensuelles tous indicateurs |
-    """)
-
-elif role == "admin":
-    st.markdown("""
-    ### Accès disponibles
-    Utilisez le menu de navigation à gauche pour accéder aux modules :
-
-    | Module | Description |
-    |---|---|
-    | **Dashboard Global** | Vue consolidée de toutes les performances du réseau |
-    | **Étude comparative** | Comparaison de deux dates QR Code |
-    | **Historique** | Consultation des traitements passés |
-    | **Cash Flow** | Classements Top/Flop cash in/out, alertes seuil |
-    | **Dashboard QR Code** | Vue agrégée réseau QR Code (métriques, segments, DSM) |
-    | **Réactivité Commerciale** | Transactions/jour, clients/jour, temps mort, temps de recharge |
-    | **Portefeuilles** | Gestion des portefeuilles clients |
-    | **Appro / Destockage** | Suivi des approvisionnements et destockages |
-    | **Comparaisons MoM** | Évolutions mensuelles tous indicateurs |
-    """)
-
-elif role == "commercial":
-    st.markdown("""
-    ### Votre espace personnel
-    Utilisez le menu de navigation à gauche pour accéder à votre dashboard.
-
-    | Module | Description |
-    |---|---|
-    | **Mon Dashboard** | Vos agents, vos statuts QR Code, votre rang cash in/out |
-    | **Comparaisons MoM** | Vos évolutions mensuelles |
-    """)
-
-st.divider()
-st.caption("ALBARKA — Application locale · Aucune donnée transmise à un serveur externe")
+pages_du_role = _ALL_PAGES.get(role, _ALL_PAGES["commercial"])
+nav = st.navigation(pages_du_role)
+nav.run()

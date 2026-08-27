@@ -20,8 +20,6 @@ from core.auth import require_role, show_user_badge, get_current_user
 from core.cashflow import get_cashflow, top_flop_cashflow
 from core.export import export_df_to_excel
 
-st.set_page_config(page_title="Mon Dashboard — ALBARKA", layout="wide")
-
 from core.ui import apply_theme, show_page_header
 apply_theme()
 

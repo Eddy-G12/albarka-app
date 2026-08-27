@@ -35,12 +35,6 @@ from core.cashflow import match_commercial_by_filename
 from core.export import export_df_to_excel
 
 # ──────────────────────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="Réactivité Commerciale — ALBARKA",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
 from core.ui import apply_theme, show_page_header
 apply_theme()
 

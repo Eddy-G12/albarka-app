@@ -131,17 +131,15 @@ if tab_import is not None:
                         com_id = commercial_match["id"]
                         alias  = commercial_match.get("alias_csv")
 
-                        # Clients servis — utilise l'alias si disponible, sinon détection auto
+                        # Clients servis — utilise l'alias si disponible
                         if alias:
                             clients_list = extract_clients_servis(df, alias)
                         else:
-                            # Pas d'alias → on stocke toutes les contreparties sans filtre commercial
-                            # (on ne peut pas distinguer le compte propre sans alias)
                             clients_list = []
 
                         if clients_list:
                             db.save_clients_servis(
-                                com_id, date_op=None,
+                                com_id,
                                 contreparties=clients_list,
                                 source_fichier=f.name,
                             )
@@ -150,22 +148,25 @@ if tab_import is not None:
                         if alias:
                             try:
                                 appro_rows = extract_appro_from_workbook(chemin, alias)
-                                conn = db.get_connection()
-                                for row_a in appro_rows:
-                                    conn.execute("""
-                                        INSERT INTO appro
-                                            (commercial_id, date_op, type_op, nb_ops, montant, source_fichier)
-                                        VALUES (?, ?, ?, ?, ?, ?)
-                                        ON CONFLICT(commercial_id, date_op, type_op) DO UPDATE SET
-                                            nb_ops         = excluded.nb_ops,
-                                            montant        = excluded.montant,
-                                            source_fichier = excluded.source_fichier,
-                                            created_at     = datetime('now')
-                                    """, (com_id, row_a["date_op"], row_a["type_op"],
-                                          row_a["nb_ops"], row_a["montant"], f.name))
-                                conn.commit()
-                                conn.close()
-                                appro_ok = bool(appro_rows)
+                                if appro_rows:
+                                    conn_appro = db.get_connection()
+                                    try:
+                                        for row_a in appro_rows:
+                                            conn_appro.execute("""
+                                                INSERT INTO appro
+                                                    (commercial_id, date_op, type_op, nb_ops, montant, source_fichier)
+                                                VALUES (?, ?, ?, ?, ?, ?)
+                                                ON CONFLICT(commercial_id, date_op, type_op) DO UPDATE SET
+                                                    nb_ops         = excluded.nb_ops,
+                                                    montant        = excluded.montant,
+                                                    source_fichier = excluded.source_fichier,
+                                                    created_at     = datetime('now')
+                                            """, (com_id, row_a["date_op"], row_a["type_op"],
+                                                  row_a["nb_ops"], row_a["montant"], f.name))
+                                        conn_appro.commit()
+                                        appro_ok = True
+                                    finally:
+                                        conn_appro.close()
                             except Exception as e_appro:
                                 st.warning(f"{f.name} — appro non extrait : {e_appro}")
 

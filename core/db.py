@@ -695,11 +695,18 @@ def get_telephones_clients(portefeuille_id: int) -> set:
 # Clients servis
 # ---------------------------------------------------------------------------
 
-def save_clients_servis(commercial_id: int, date_op: str,
-                        contreparties: list[dict], source_fichier: str = None):
+def save_clients_servis(commercial_id: int,
+                        contreparties: list[dict],
+                        source_fichier: str = None,
+                        date_op: str = None):
     """
-    Insère / met à jour les contreparties pour un commercial × date.
-    contreparties = liste de {nom_contrepartie, msisdn_contrepartie, nb_transactions}.
+    Insère / met à jour les contreparties pour un commercial.
+    Chaque entrée de `contreparties` doit contenir :
+      - date_op             : date ISO (AAAA-MM-JJ) — lue depuis l'entrée en priorité,
+                              sinon utilise le paramètre date_op global (rétrocompatibilité)
+      - nom_contrepartie    : nom MTN de la contrepartie
+      - msisdn_contrepartie : MSISDN ou nom (fallback) de la contrepartie
+      - nb_transactions     : nombre de transactions ce jour (optionnel, défaut 1)
     Upsert sur (commercial_id, date_op, msisdn_contrepartie).
     """
     conn = get_connection()
@@ -707,6 +714,10 @@ def save_clients_servis(commercial_id: int, date_op: str,
         msisdn = str(cp.get("msisdn_contrepartie", "")).strip()
         if not msisdn:
             continue
+        # Priorité : date_op dans l'entrée, sinon paramètre global
+        d_op = cp.get("date_op") or date_op
+        if not d_op:
+            continue  # on ne peut pas insérer sans date
         conn.execute("""
             INSERT INTO clients_servis
                 (commercial_id, date_op, nom_contrepartie, msisdn_contrepartie,
@@ -714,10 +725,10 @@ def save_clients_servis(commercial_id: int, date_op: str,
             VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(commercial_id, date_op, msisdn_contrepartie) DO UPDATE SET
                 nom_contrepartie = excluded.nom_contrepartie,
-                nb_transactions  = excluded.nb_transactions,
+                nb_transactions  = nb_transactions + excluded.nb_transactions,
                 source_fichier   = excluded.source_fichier,
                 created_at       = datetime('now')
-        """, (commercial_id, date_op,
+        """, (commercial_id, d_op,
               cp.get("nom_contrepartie"),
               msisdn,
               cp.get("nb_transactions", 1),

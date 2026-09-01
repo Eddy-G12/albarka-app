@@ -350,74 +350,82 @@ for f in fichiers:
 st.divider()
 
 # ── Calcul ────────────────────────────────────────────────────────────────────
-if not st.button("Calculer les indicateurs", key="btn_calc_react", type="primary"):
+col_btn, col_reset = st.columns([2, 1])
+calcul_demande = col_btn.button("Calculer les indicateurs", key="btn_calc_react", type="primary")
+if col_reset.button("Effacer les résultats", key="btn_reset_react"):
+    st.session_state.pop("react_resultats", None)
+    st.rerun()
+
+if calcul_demande:
+    resultats_new = []
+    erreurs_new   = []
+    progress      = st.progress(0, text="Calcul en cours…")
+
+    for i, f in enumerate(fichiers):
+        progress.progress(i / len(fichiers), text=f"Traitement de {f.name}…")
+        dsm_name = associations.get(f.name)
+
+        try:
+            f.seek(0)
+            raw = f.read()
+            df  = _load_raw_csv(raw)
+
+            if df.empty:
+                erreurs_new.append((f.name, "Aucune transaction Transfer/Successful trouvée."))
+                continue
+
+            com   = com_by_dsm.get(dsm_name.upper()) if dsm_name else None
+            alias = db.get_alias(com["id"]) if com else None
+
+            if not alias:
+                alias = _detect_alias_in_df(df, alias_map)
+
+            if not alias:
+                erreurs_new.append((
+                    f.name,
+                    f"Alias introuvable pour **{dsm_name}**. "
+                    "Configure l'alias dans Administration → Aliases CSV."
+                ))
+                continue
+
+            ind = _compute_reactivity_raw(df, alias)
+
+            resultats_new.append({
+                "commercial":              dsm_name or alias,
+                "alias":                   alias,
+                "fichier":                 f.name,
+                "nb_transactions":         ind["nb_transactions_total"],
+                "nb_jours_actifs":         ind["nb_jours_actifs"],
+                "transactions_par_jour":   ind["transactions_par_jour"],
+                "clients_par_jour":        ind["clients_par_jour"],
+                "temps_mort_median_min":   ind["temps_mort_median_min"],
+                "temps_mort_max_min":      ind["temps_mort_max_min"],
+                "temps_recharge_med_min":  ind["temps_recharge_median_min"],
+                "temps_recharge_min_min":  ind["temps_recharge_min_min"],
+            })
+
+        except Exception as e:
+            erreurs_new.append((f.name, f"{e}"))
+
+    progress.progress(1.0, text="Terminé.")
+
+    for fname, msg in erreurs_new:
+        st.warning(f"**{fname}** — {msg}")
+
+    if resultats_new:
+        # Stocker en session → persistant lors des changements de page
+        st.session_state["react_resultats"] = resultats_new
+    elif not erreurs_new:
+        st.error("Aucun fichier traité.")
+
+# ── Affichage des résultats (depuis session_state) ────────────────────────────
+if "react_resultats" not in st.session_state:
     st.stop()
 
 st.subheader("3 — Résultats")
+st.caption("Les résultats sont conservés même si vous changez de page.")
 
-resultats = []
-erreurs   = []
-progress  = st.progress(0, text="Calcul en cours…")
-
-for i, f in enumerate(fichiers):
-    progress.progress(i / len(fichiers), text=f"Traitement de {f.name}…")
-    dsm_name = associations.get(f.name)
-
-    try:
-        f.seek(0)
-        raw = f.read()
-        df  = _load_raw_csv(raw)
-
-        if df.empty:
-            erreurs.append((f.name, "Aucune transaction Transfer/Successful trouvée."))
-            continue
-
-        # Trouver l'alias du commercial sélectionné
-        com = com_by_dsm.get(dsm_name.upper()) if dsm_name else None
-        alias = db.get_alias(com["id"]) if com else None
-
-        # Fallback : détecter dans le fichier
-        if not alias:
-            alias = _detect_alias_in_df(df, alias_map)
-
-        if not alias:
-            erreurs.append((
-                f.name,
-                f"Alias introuvable pour **{dsm_name}**. "
-                "Configure l'alias dans Administration → Aliases CSV."
-            ))
-            continue
-
-        ind = _compute_reactivity_raw(df, alias)
-
-        resultats.append({
-            "commercial":              dsm_name or alias,
-            "alias":                   alias,
-            "fichier":                 f.name,
-            "nb_transactions":         ind["nb_transactions_total"],
-            "nb_jours_actifs":         ind["nb_jours_actifs"],
-            "transactions_par_jour":   ind["transactions_par_jour"],
-            "clients_par_jour":        ind["clients_par_jour"],
-            "temps_mort_median_min":   ind["temps_mort_median_min"],
-            "temps_mort_max_min":      ind["temps_mort_max_min"],
-            "temps_recharge_med_min":  ind["temps_recharge_median_min"],
-            "temps_recharge_min_min":  ind["temps_recharge_min_min"],
-        })
-
-    except Exception as e:
-        import traceback
-        erreurs.append((f.name, f"{e}"))
-
-progress.progress(1.0, text="Terminé.")
-
-for fname, msg in erreurs:
-    st.warning(f"**{fname}** — {msg}")
-
-if not resultats:
-    st.error("Aucun fichier traité.")
-    st.stop()
-
-df_res = pd.DataFrame(resultats)
+df_res = pd.DataFrame(st.session_state["react_resultats"])
 
 # ── Tableau récapitulatif ─────────────────────────────────────────────────────
 st.markdown("#### Tableau récapitulatif")

@@ -88,7 +88,7 @@ def points_touches(
 
 @router.get("/clients-servis", response_model=ClientsServisResponse)
 def clients_servis(
-    commercial_id: int = Query(...),
+    commercial_id: Optional[int] = Query(None),
     du:  Optional[str] = Query(None),
     au:  Optional[str] = Query(None),
     _: RequireAll = None,

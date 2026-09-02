@@ -174,7 +174,7 @@ def get_appro_par_jour(commercial_id: int = None,
     conn = get_connection()
     q = """
         SELECT a.id, a.date_op, a.type_op, a.nb_ops, a.montant,
-               a.source_fichier, c.dsm_name
+               a.source_fichier, a.commercial_id, c.dsm_name
         FROM appro a
         JOIN commerciaux c ON c.id = a.commercial_id
         WHERE 1=1

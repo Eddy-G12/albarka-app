@@ -298,7 +298,7 @@ def _com_to_out(c: dict) -> CommercialOut:
         dsm_name=c["dsm_name"],
         telephone=c.get("telephone"),
         zone=c.get("zone"),
-        actif=bool(c["actif"]),
+        actif=bool(c["com_actif"]),
         alias=c.get("alias_csv"),
     )
 

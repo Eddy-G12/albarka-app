@@ -1,0 +1,23 @@
+# Dépendances Python — application ALBARKA
+# Installation : pip install -r requirements.txt
+
+# ── Web / API ──────────────────────────────────────────────────────────────────
+fastapi==0.141.1
+uvicorn[standard]==0.30.6
+python-multipart==0.0.20
+
+# ── Auth JWT ───────────────────────────────────────────────────────────────────
+python-jose[cryptography]==3.5.0
+passlib[bcrypt]==1.7.4
+
+# ── Data ───────────────────────────────────────────────────────────────────────
+pandas==3.0.5
+numpy==2.5.2
+openpyxl==3.1.5
+
+# ── Dashboard Streamlit (interface locale existante) ───────────────────────────
+streamlit==1.62.0
+plotly==6.9.0
+
+# ── Utilitaires ────────────────────────────────────────────────────────────────
+python-dotenv==1.2.3

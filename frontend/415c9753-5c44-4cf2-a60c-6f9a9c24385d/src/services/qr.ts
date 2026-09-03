@@ -67,18 +67,19 @@ export async function getDatesQr(): Promise<string[]> {
 export async function getRepartitionQr(
   dateRef: string,
   dsmName?: string,
+  segmentGroup?: string,
 ): Promise<{ agents: QrAgent[]; repartition: RepartitionQr }> {
   const data = await api.get<{
     agents: Record<string, unknown>[];
     repartition: Record<string, unknown>;
-  }>(`/qr/repartition${qs({ date_ref: dateRef, dsm_name: dsmName })}`);
+  }>(`/qr/repartition${qs({ date_ref: dateRef, dsm_name: dsmName, segment_group: segmentGroup })}`);
   return {
     agents:      data.agents.map(mapAgent),
     repartition: mapRepartition(data.repartition),
   };
 }
 
-export async function getQrParSegment(dateRef: string, dsmName?: string) {
+export async function getQrParSegment(dateRef: string, dsmName?: string, segmentGroup?: string) {
   const data = await api.get<{
     segment: string;
     total: number;
@@ -86,7 +87,7 @@ export async function getQrParSegment(dateRef: string, dsmName?: string) {
     risque: number;
     non_utilise: number;
     sans_qr: number;
-  }[]>(`/qr/segments${qs({ date_ref: dateRef, dsm_name: dsmName })}`);
+  }[]>(`/qr/segments${qs({ date_ref: dateRef, dsm_name: dsmName, segment_group: segmentGroup })}`);
   return data.map(r => ({
     segment:    r.segment,
     total:      r.total,
@@ -121,9 +122,22 @@ export async function getQrParDsm(dateRef: string) {
 export async function getAgentsPrioritaires(
   dateRef: string,
   dsmName?: string,
+  segmentGroup?: string,
 ): Promise<QrAgent[]> {
   const data = await api.get<Record<string, unknown>[]>(
-    `/qr/prioritaires${qs({ date_ref: dateRef, dsm_name: dsmName })}`,
+    `/qr/prioritaires${qs({ date_ref: dateRef, dsm_name: dsmName, segment_group: segmentGroup })}`,
+  );
+  return data.map(mapAgent);
+}
+
+export async function getAgentsQr(
+  dateRef: string,
+  dsmName?: string,
+  segmentGroup?: string,
+  statut?: string,
+): Promise<QrAgent[]> {
+  const data = await api.get<Record<string, unknown>[]>(
+    `/qr/agents${qs({ date_ref: dateRef, dsm_name: dsmName, segment_group: segmentGroup, statut })}`,
   );
   return data.map(mapAgent);
 }

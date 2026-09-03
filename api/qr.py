@@ -105,12 +105,15 @@ def dates_qr(_: RequireAll = None):
 def repartition_qr(
     date_ref: str = Query(..., description="Date ISO AAAA-MM-JJ"),
     dsm_name: Optional[str] = Query(None),
+    segment_group: Optional[str] = Query(None, description="Filtre segment : '1-HVC', '2-MVC' ou '3-LVC'"),
     _: RequireAll = None,
 ):
     """Répartition des agents par statut QR pour une date de référence."""
     df = _load_cache(date_ref)
     if dsm_name:
         df = df[df["dsm_name"] == dsm_name]
+    if segment_group:
+        df = df[df["segment_group"] == segment_group]
     agents = [_agent_to_out(row) for row in df.to_dict("records")]
     return RepartitionQrResponse(agents=agents, repartition=_calc_repartition(agents))
 
@@ -119,12 +122,15 @@ def repartition_qr(
 def qr_par_segment(
     date_ref: str = Query(...),
     dsm_name: Optional[str] = Query(None),
+    segment_group: Optional[str] = Query(None),
     _: RequireAll = None,
 ):
     """Répartition par segment_group."""
     df = _load_cache(date_ref)
     if dsm_name:
         df = df[df["dsm_name"] == dsm_name]
+    if segment_group:
+        df = df[df["segment_group"] == segment_group]
     segments = sorted(df["segment_group"].dropna().unique())
     result = []
     for seg in segments:
@@ -171,13 +177,37 @@ def qr_par_dsm(
 def agents_prioritaires(
     date_ref: str = Query(...),
     dsm_name: Optional[str] = Query(None),
+    segment_group: Optional[str] = Query(None),
     _: RequireAll = None,
 ):
     """Agents non actifs (Sans QR, Non utilisé, Risque inactivité)."""
     df = _load_cache(date_ref)
     if dsm_name:
         df = df[df["dsm_name"] == dsm_name]
+    if segment_group:
+        df = df[df["segment_group"] == segment_group]
     df = df[df["statut"] != "Actif"]
+    return [_agent_to_out(r) for r in df.to_dict("records")]
+
+
+@router.get("/agents", response_model=list[QrAgentOut])
+def liste_agents(
+    date_ref: str = Query(...),
+    dsm_name: Optional[str] = Query(None),
+    segment_group: Optional[str] = Query(None),
+    statut: Optional[str] = Query(None, description="Filtre statut : actif, risque, non_utilise, sans_qr"),
+    _: RequireAll = None,
+):
+    """Liste complète des agents avec filtres optionnels segment et statut."""
+    df = _load_cache(date_ref)
+    if dsm_name:
+        df = df[df["dsm_name"] == dsm_name]
+    if segment_group:
+        df = df[df["segment_group"] == segment_group]
+    if statut:
+        statut_raw = {v: k for k, v in STATUT_MAP.items()}.get(statut)
+        if statut_raw:
+            df = df[df["statut"] == statut_raw]
     return [_agent_to_out(r) for r in df.to_dict("records")]
 
 

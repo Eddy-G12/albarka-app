@@ -15,6 +15,13 @@ Documentation interactive : http://localhost:8000/docs
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+# Charge .env si présent (développement local)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
+except ImportError:
+    pass
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

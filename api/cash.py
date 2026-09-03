@@ -127,13 +127,13 @@ def alertes_seuil_commercial(
 
 # ── Cash Flow POS ──────────────────────────────────────────────────────────────
 
-def _pos_to_out(r: dict) -> CashflowPosOut:
+def _pos_to_out(r: dict, mois: str = "") -> CashflowPosOut:
     return CashflowPosOut(
         pos_id=r.get("pos_id", 0),
         acceptor_id=r["acceptorid"],
         agent_name=r.get("agent_name") or "",
         agent_msisdn=r.get("agent_msisdn") or "",
-        mois=r["mois"],
+        mois=r.get("mois", mois),
         cash_in=r["cash_in"],
         cash_out=r["cash_out"],
     )
@@ -164,8 +164,8 @@ def classement_pos(
     """Top N et Flop N des POS pour un mois et un type de flux."""
     if flux not in ("cash_in", "cash_out"):
         flux = "cash_in"
-    top  = [_pos_to_out(r) for r in db.top_flop_pos(mois, flux, n=n, ordre="top")]
-    flop = [_pos_to_out(r) for r in db.top_flop_pos(mois, flux, n=n, ordre="flop")]
+    top  = [_pos_to_out(r, mois) for r in db.top_flop_pos(mois, flux, n=n, ordre="top")]
+    flop = [_pos_to_out(r, mois) for r in db.top_flop_pos(mois, flux, n=n, ordre="flop")]
     total = len(db.get_cashflow_pos(mois))
     return ClassementPosResponse(top=top, flop=flop, total=total)
 

@@ -11,9 +11,7 @@ import { DownloadIcon, ZoomInIcon, ZoomOutIcon } from 'lucide-react';
 
 interface ChartWrapperProps {
   children: React.ReactNode;
-  /** Nom du fichier PNG téléchargé (sans extension) */
   titre?: string;
-  /** Classe CSS additionnelle sur le conteneur extérieur */
   className?: string;
 }
 
@@ -22,8 +20,11 @@ const ZOOM_MIN  = 0.5;
 const ZOOM_MAX  = 3;
 
 /**
- * Extrait le SVG Recharts du conteneur, injecte un fond blanc,
- * et le rasterise en PNG via canvas.
+ * Rasterise le SVG Recharts en PNG.
+ *
+ * Recharts pose les couleurs directement comme attributs SVG (fill="…").
+ * On ne touche PAS aux styles calculés pour éviter de capturer le fond sombre
+ * de la page. On ajoute uniquement un rect blanc en fond et on sérialise.
  */
 async function svgToPng(container: HTMLElement): Promise<string> {
   const svg = container.querySelector('svg');
@@ -33,29 +34,42 @@ async function svgToPng(container: HTMLElement): Promise<string> {
   const w = Math.round(rect.width)  || 800;
   const h = Math.round(rect.height) || 400;
 
-  // Cloner pour ne pas modifier le DOM original
   const clone = svg.cloneNode(true) as SVGElement;
   clone.setAttribute('width',  String(w));
   clone.setAttribute('height', String(h));
-  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  clone.setAttribute('xmlns',  'http://www.w3.org/2000/svg');
 
-  // Injecter un fond blanc en premier enfant
+  // Fond blanc explicite — évite le fond noir par défaut du canvas
   const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-  bg.setAttribute('width', '100%');
+  bg.setAttribute('width',  '100%');
   bg.setAttribute('height', '100%');
-  bg.setAttribute('fill', '#ffffff');
+  bg.setAttribute('fill',   '#ffffff');
   clone.insertBefore(bg, clone.firstChild);
 
-  // Inliner fill/stroke depuis les styles calculés pour que les couleurs soient préservées
-  const srcEls = Array.from(svg.querySelectorAll('*'));
-  const dstEls = Array.from(clone.querySelectorAll('*'));
+  // Pour les éléments qui ont fill/stroke définis UNIQUEMENT via CSS (classe Tailwind, etc.),
+  // on copie la valeur calculée en attribut direct — mais seulement si elle n'est pas
+  // héritée du fond sombre (noir ou transparent).
+  const srcEls = Array.from(svg.querySelectorAll('[class]'));
+  const dstEls = Array.from(clone.querySelectorAll('[class]'));
   srcEls.forEach((src, i) => {
-    const dst = dstEls[i] as SVGElement;
+    const dst = dstEls[i];
     if (!dst) return;
     const cs = window.getComputedStyle(src);
-    for (const prop of ['fill', 'stroke', 'stroke-width', 'font-size', 'font-family', 'opacity']) {
-      const val = cs.getPropertyValue(prop);
-      if (val && val !== 'none' && val !== '') dst.style.setProperty(prop, val);
+
+    const cFill = cs.fill;
+    if (
+      !src.getAttribute('fill') &&
+      cFill &&
+      cFill !== 'none' &&
+      cFill !== 'rgb(0, 0, 0)' &&       // noir = héritage du fond, on l'ignore
+      cFill !== 'rgba(0, 0, 0, 0)'      // transparent idem
+    ) {
+      dst.setAttribute('fill', cFill);
+    }
+
+    const cStroke = cs.stroke;
+    if (!src.getAttribute('stroke') && cStroke && cStroke !== 'none') {
+      dst.setAttribute('stroke', cStroke);
     }
   });
 
@@ -66,7 +80,7 @@ async function svgToPng(container: HTMLElement): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      const scale  = 2; // résolution ×2 (Retina)
+      const scale  = 2; // résolution ×2 pour écrans Retina
       const canvas = document.createElement('canvas');
       canvas.width  = w * scale;
       canvas.height = h * scale;
@@ -98,7 +112,7 @@ export function ChartWrapper({ children, titre = 'graphique', className = '' }: 
     try {
       const dataUrl = await svgToPng(innerRef.current);
       const a = document.createElement('a');
-      a.href = dataUrl;
+      a.href     = dataUrl;
       a.download = `${titre.replace(/[^a-z0-9-_]/gi, '_').toLowerCase()}.png`;
       document.body.appendChild(a);
       a.click();

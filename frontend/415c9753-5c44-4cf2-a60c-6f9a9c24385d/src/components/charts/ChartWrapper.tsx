@@ -3,17 +3,11 @@
  * =======================================
  * Enveloppe n'importe quel graphique Recharts avec :
  *   - Boutons zoom +  / zoom −  / reset (transform: scale CSS)
- *   - Bouton téléchargement PNG via html-to-image
- *
- * Usage :
- *   <ChartWrapper titre="Cash In">
- *     <BarresHorizontales ... />
- *   </ChartWrapper>
+ *   - Bouton téléchargement PNG via extraction SVG → canvas (natif, sans lib)
  */
 
 import React, { useRef, useState, useCallback } from 'react';
-import { toPng } from 'html-to-image';
-import { DownloadIcon, ZoomInIcon, ZoomOutIcon, Maximize2Icon } from 'lucide-react';
+import { DownloadIcon, ZoomInIcon, ZoomOutIcon } from 'lucide-react';
 
 interface ChartWrapperProps {
   children: React.ReactNode;
@@ -27,6 +21,68 @@ const ZOOM_STEP = 0.15;
 const ZOOM_MIN  = 0.5;
 const ZOOM_MAX  = 3;
 
+/**
+ * Extrait le SVG Recharts du conteneur, injecte un fond blanc,
+ * et le rasterise en PNG via canvas.
+ */
+async function svgToPng(container: HTMLElement): Promise<string> {
+  const svg = container.querySelector('svg');
+  if (!svg) throw new Error('Aucun SVG trouvé dans le graphique.');
+
+  const rect = svg.getBoundingClientRect();
+  const w = Math.round(rect.width)  || 800;
+  const h = Math.round(rect.height) || 400;
+
+  // Cloner pour ne pas modifier le DOM original
+  const clone = svg.cloneNode(true) as SVGElement;
+  clone.setAttribute('width',  String(w));
+  clone.setAttribute('height', String(h));
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+
+  // Injecter un fond blanc en premier enfant
+  const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  bg.setAttribute('width', '100%');
+  bg.setAttribute('height', '100%');
+  bg.setAttribute('fill', '#ffffff');
+  clone.insertBefore(bg, clone.firstChild);
+
+  // Inliner fill/stroke depuis les styles calculés pour que les couleurs soient préservées
+  const srcEls = Array.from(svg.querySelectorAll('*'));
+  const dstEls = Array.from(clone.querySelectorAll('*'));
+  srcEls.forEach((src, i) => {
+    const dst = dstEls[i] as SVGElement;
+    if (!dst) return;
+    const cs = window.getComputedStyle(src);
+    for (const prop of ['fill', 'stroke', 'stroke-width', 'font-size', 'font-family', 'opacity']) {
+      const val = cs.getPropertyValue(prop);
+      if (val && val !== 'none' && val !== '') dst.style.setProperty(prop, val);
+    }
+  });
+
+  const svgString = new XMLSerializer().serializeToString(clone);
+  const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale  = 2; // résolution ×2 (Retina)
+      const canvas = document.createElement('canvas');
+      canvas.width  = w * scale;
+      canvas.height = h * scale;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+}
+
 export function ChartWrapper({ children, titre = 'graphique', className = '' }: ChartWrapperProps) {
   const [zoom, setZoom] = useState(1);
   const [downloading, setDownloading] = useState(false);
@@ -39,28 +95,21 @@ export function ChartWrapper({ children, titre = 'graphique', className = '' }: 
   const download = useCallback(async () => {
     if (!innerRef.current || downloading) return;
     setDownloading(true);
-    // On capture à zoom = 1 pour avoir une image nette quelle que soit la vue courante
-    const prevZoom = zoom;
-    setZoom(1);
-    // Attendre le repaint
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r as () => void)));
     try {
-      const dataUrl = await toPng(innerRef.current, {
-        backgroundColor: '#ffffff',
-        pixelRatio: 2,          // résolution ×2 pour écrans Retina
-        style: { borderRadius: '0' },
-      });
+      const dataUrl = await svgToPng(innerRef.current);
       const a = document.createElement('a');
       a.href = dataUrl;
       a.download = `${titre.replace(/[^a-z0-9-_]/gi, '_').toLowerCase()}.png`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
     } catch (err) {
       console.error('Erreur export PNG :', err);
+      alert("Impossible de générer l'image. Vérifiez la console pour plus de détails.");
     } finally {
-      setZoom(prevZoom);
       setDownloading(false);
     }
-  }, [downloading, titre, zoom]);
+  }, [downloading, titre]);
 
   const pct = Math.round(zoom * 100);
 
@@ -106,9 +155,9 @@ export function ChartWrapper({ children, titre = 'graphique', className = '' }: 
           className="p-1 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-wait transition-colors"
           aria-label="Télécharger en PNG"
         >
-          {downloading
-            ? <Maximize2Icon className="h-3.5 w-3.5 text-gray-400 animate-pulse" />
-            : <DownloadIcon className="h-3.5 w-3.5 text-gray-600" />}
+          <DownloadIcon
+            className={`h-3.5 w-3.5 ${downloading ? 'text-gray-300 animate-pulse' : 'text-gray-600'}`}
+          />
         </button>
       </div>
 

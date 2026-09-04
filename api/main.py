@@ -31,6 +31,10 @@ from api.cash    import router as router_cash
 from api.qr      import router as router_qr
 from api.terrain import router as router_terrain
 from api.gestion import router as router_gestion
+from api.import_tx  import router as router_import_tx
+from api.import_qr  import router as router_import_qr
+from api.import_sae import router as router_import_sae
+from api.import_pf  import router as router_import_pf
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
@@ -75,6 +79,10 @@ app.include_router(router_cash)
 app.include_router(router_qr)
 app.include_router(router_terrain)
 app.include_router(router_gestion)
+app.include_router(router_import_tx)
+app.include_router(router_import_qr)
+app.include_router(router_import_sae)
+app.include_router(router_import_pf)
 
 
 # ── Healthcheck ───────────────────────────────────────────────────────────────

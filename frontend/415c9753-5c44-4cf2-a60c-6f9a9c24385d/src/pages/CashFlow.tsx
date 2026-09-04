@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
+import { UploadCloudIcon } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Section, TitreBloc } from '../components/ui/Section';
 import { Tabs } from '../components/ui/Tabs';
 import { Champ, Select } from '../components/ui/Field';
 import { SelecteurMois } from '../components/Filtres';
-import { FileDropzone } from '../components/FileDropzone';
+import { Button } from '../components/ui/Button';
 import { DataTable } from '../components/DataTable';
 import { BarresHorizontales } from '../components/charts/Charts';
 import { GrilleMetriques, MetricCard } from '../components/MetricCard';
@@ -21,18 +23,75 @@ import { formatFcfa, formatNombre, labelMois } from '../utils/format';
 import { exporterExcel } from '../utils/export';
 
 function OngletImport() {
+  const [fichier, setFichier] = useState<File | null>(null);
+  const [mois, setMois]       = useState('');
+  const [loading, setLoading] = useState(false);
+  const [resultat, setResultat] = useState<{ mois: string; nb_pos: number; total_cash_in: number; total_cash_out: number } | null>(null);
+
+  const lancer = async () => {
+    if (!fichier) { toast.error('Sélectionnez un fichier SAE.'); return; }
+    setLoading(true);
+    try {
+      const { importerSae } = await import('../services/import');
+      const res = await importerSae(fichier, mois || undefined);
+      setResultat(res);
+      toast.success(`Import réussi — ${res.nb_pos} POS — mois ${res.mois}`);
+    } catch (err) {
+      toast.error(`Erreur : ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Section
       titre="Import du fichier SAE MTN"
-      description="Feuille 1 ignorée, lecture de Sheet1 (731 POS). Le mois est détecté depuis le nom du fichier puis confirmé.">
-      
-      <FileDropzone
-        accept=".xlsx,.csv"
-        multiple={false}
-        legende="Fichier SAE mensuel (.xlsx ou .csv) — colonnes acceptorid, agent_msisdn, agent_name, cash_in_com, cash_out_com." />
-      
-    </Section>);
+      description="Feuille 1 ignorée, lecture de Sheet1 (731 POS). Le mois est détecté depuis le nom du fichier puis confirmé."
+    >
+      <div className="flex flex-wrap items-end gap-3 mb-4">
+        <Champ label="Mois (optionnel)" htmlFor="mois-sae" className="w-40">
+          <input
+            id="mois-sae"
+            type="month"
+            value={mois}
+            onChange={(e) => setMois(e.target.value)}
+            className="w-full rounded border border-albarka-border px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-albarka-black"
+            placeholder="2026-08"
+          />
+        </Champ>
+      </div>
 
+      <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-albarka-black transition-colors bg-gray-50">
+        <UploadCloudIcon className="h-6 w-6 text-gray-400 mb-1" />
+        <span className="text-sm text-gray-500">
+          {fichier ? fichier.name : 'Cliquez pour sélectionner le fichier SAE (.xlsx ou .csv)'}
+        </span>
+        <input
+          type="file"
+          accept=".xlsx,.csv"
+          className="hidden"
+          onChange={(e) => setFichier(e.target.files?.[0] ?? null)}
+        />
+      </label>
+
+      <Button
+        variante="primaire"
+        onClick={lancer}
+        disabled={!fichier || loading}
+        className="mt-4"
+      >
+        {loading ? 'Import en cours…' : 'Importer'}
+      </Button>
+
+      {resultat && (
+        <div className="mt-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          <strong>Mois {resultat.mois}</strong> — {formatNombre(resultat.nb_pos)} POS —
+          Cash In : {formatFcfa(resultat.total_cash_in)} FCFA —
+          Cash Out : {formatFcfa(resultat.total_cash_out)} FCFA
+        </div>
+      )}
+    </Section>
+  );
 }
 
 function OngletClassements() {
@@ -267,11 +326,10 @@ function OngletMoM() {
       <Section
         titre="Comparaison multi-fichiers"
         description="Déposez 2 ou 3 fichiers SAE de mois différents, ou comparez directement les mois déjà importés.">
-        
-        <FileDropzone
-          accept=".xlsx,.csv"
-          legende="2 ou 3 fichiers SAE de mois différents. Le mois détecté reste modifiable avant traitement." />
-        
+
+        <p className="text-sm text-albarka-muted">
+          Importez d'abord les fichiers SAE via l'onglet "Import", puis revenez ici pour comparer les mois disponibles.
+        </p>
         <div className="mt-4">
           <TitreBloc>Mois déjà importés (2 à 3)</TitreBloc>
           <div className="flex flex-wrap gap-2">

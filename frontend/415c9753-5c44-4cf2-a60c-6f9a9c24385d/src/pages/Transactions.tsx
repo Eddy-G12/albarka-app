@@ -1,45 +1,115 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
+import { UploadCloudIcon } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Tabs } from '../components/ui/Tabs';
 import { Section, TitreBloc } from '../components/ui/Section';
-import { FileDropzone } from '../components/FileDropzone';
 import { DataTable } from '../components/DataTable';
 import { GrilleMetriques, MetricCard } from '../components/MetricCard';
 import { SelecteurCommercial } from '../components/Filtres';
 import { Champ, Input } from '../components/ui/Field';
+import { Button } from '../components/ui/Button';
 import { BlocAsync, Squelette } from '../components/ui/States';
 import { useAuth } from '../contexts/AuthContext';
 import { useAsync } from '../hooks/useAsync';
 import { getClientsServis, getSynthesePointsTouches } from '../services/terrain';
+import { importerTransactions, type ResultatImportTx } from '../services/import';
 import { store } from '../services/store';
 import { formatNombre, labelDate } from '../utils/format';
 import { exporterExcel } from '../utils/export';
 
 function OngletImport() {
+  const [fichiers, setFichiers]     = useState<File[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [resultats, setResultats]   = useState<ResultatImportTx[]>([]);
   const sansAlias = store.commerciaux.filter((c) => !c.alias).map((c) => c.dsmName);
+
+  const lancer = async () => {
+    if (fichiers.length === 0) { toast.error('Sélectionnez au moins un fichier CSV.'); return; }
+    setLoading(true);
+    try {
+      const res = await importerTransactions(fichiers);
+      setResultats(res);
+      const ok = res.filter((r) => r.message === 'OK').length;
+      toast.success(`${ok} / ${res.length} fichier(s) traité(s) avec succès.`);
+    } catch (err) {
+      toast.error(`Erreur : ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
       <Section
         titre="Dépôt des CSV bruts MTN"
-        description="Un fichier par commercial. Nettoyage automatique (Type = Transfer, hors ALBARKA GN SARL) puis génération d'un classeur 3 onglets : Données, TCD - To Name, TCD - From Name.">
-        
-        <FileDropzone
-          accept=".csv"
-          legende="Le commercial est déduit du nom du fichier (ex. ANTOINE.csv → ANTOINE) et reste modifiable."
-          commerciaux={store.commerciaux.map((c) => ({ dsmName: c.dsmName, alias: c.alias }))} />
-        
+        description="Un fichier par commercial. Nettoyage automatique (Type = Transfer, hors ALBARKA GN SARL), classeur Excel, clients servis et appro/déstockage calculés automatiquement."
+      >
+        <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-albarka-black transition-colors bg-gray-50">
+          <UploadCloudIcon className="h-6 w-6 text-gray-400 mb-1" />
+          <span className="text-sm text-gray-500">
+            {fichiers.length > 0
+              ? `${fichiers.length} fichier(s) sélectionné(s)`
+              : 'Cliquez pour sélectionner un ou plusieurs CSV'}
+          </span>
+          <input
+            type="file"
+            accept=".csv"
+            multiple
+            className="hidden"
+            onChange={(e) => setFichiers(Array.from(e.target.files ?? []))}
+          />
+        </label>
+
+        <Button
+          variante="primaire"
+          onClick={lancer}
+          disabled={fichiers.length === 0 || loading}
+          className="mt-4"
+        >
+          {loading ? 'Traitement en cours…' : 'Traiter les fichiers'}
+        </Button>
       </Section>
 
-      {sansAlias.length > 0 &&
-      <p className="rounded-md border border-albarka-border bg-albarka-bg px-4 py-3 text-xs text-albarka-muted">
+      {sansAlias.length > 0 && (
+        <p className="rounded-md border border-albarka-border bg-albarka-bg px-4 py-3 text-xs text-albarka-muted">
           {sansAlias.join(', ')} n'ont pas d'alias CSV configuré : leurs clients servis et leurs
           appros / destockages ne pourront pas être extraits. Configurez l'alias dans
           Administration → Aliases CSV.
         </p>
-      }
-    </div>);
+      )}
 
+      {resultats.length > 0 && (
+        <Section titre="Résultats du traitement">
+          <div className="space-y-2">
+            {resultats.map((r, i) => (
+              <div
+                key={i}
+                className={`rounded-md border px-4 py-3 text-sm ${
+                  r.message === 'OK'
+                    ? 'border-green-200 bg-green-50 text-green-800'
+                    : 'border-amber-200 bg-amber-50 text-amber-800'
+                }`}
+              >
+                <strong>{r.fichier}</strong>
+                {r.message === 'OK' ? (
+                  <>
+                    {' '}— {formatNombre(r.nb_lignes)} lignes ·{' '}
+                    {r.points_par_jour.toFixed(1)} pts/jour
+                    {r.commercial && ` · Commercial : ${r.commercial}`}
+                    {r.nb_clients_servis > 0 && ` · ${r.nb_clients_servis} clients servis`}
+                    {r.appro_ok && ' · Appro extrait'}
+                  </>
+                ) : (
+                  <> — {r.message}</>
+                )}
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+    </div>
+  );
 }
 
 function OngletPoints({ commercialImpose }: {commercialImpose?: number;}) {

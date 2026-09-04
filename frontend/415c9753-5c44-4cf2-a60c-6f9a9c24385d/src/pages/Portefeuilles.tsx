@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
-import { ChevronDownIcon, Trash2Icon } from 'lucide-react';
+import { ChevronDownIcon, Trash2Icon, UploadCloudIcon } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Tabs } from '../components/ui/Tabs';
 import { Section, TitreBloc } from '../components/ui/Section';
-import { FileDropzone } from '../components/FileDropzone';
 import { DataTable } from '../components/DataTable';
 import { GrilleMetriques, MetricCard } from '../components/MetricCard';
 import { Button } from '../components/ui/Button';
@@ -15,31 +14,51 @@ import { BlocAsync, EtatVide, Squelette } from '../components/ui/States';
 import { useAuth } from '../contexts/AuthContext';
 import { useAsync } from '../hooks/useAsync';
 import { getClientsPortefeuille, getCouverturePortefeuille, getPortefeuilles } from '../services/terrain';
+import { importerPortefeuille } from '../services/import';
 import { store } from '../services/store';
 import { formatNombre, formatPourcent, labelDate } from '../utils/format';
 import { exporterExcel } from '../utils/export';
 
 function OngletImport() {
   const [commercialId, setCommercialId] = useState(String(store.commerciaux[0]?.id ?? ''));
-  const [nom, setNom] = useState('');
+  const [nom, setNom]                   = useState('');
+  const [fichier, setFichier]           = useState<File | null>(null);
+  const [loading, setLoading]           = useState(false);
+  const portefeuilles                   = useAsync(() => getPortefeuilles(), []);
+
+  const lancer = async () => {
+    if (!fichier)          { toast.error('Sélectionnez un fichier Excel.'); return; }
+    if (!nom.trim())       { toast.error('Saisissez un nom de portefeuille.'); return; }
+    if (!commercialId)     { toast.error('Sélectionnez un commercial.'); return; }
+    setLoading(true);
+    try {
+      const res = await importerPortefeuille(fichier, Number(commercialId), nom.trim());
+      toast.success(`Portefeuille "${res.nom}" créé — ${res.nb_clients} clients.`);
+      setFichier(null);
+      setNom('');
+      portefeuilles.recharger();
+    } catch (err) {
+      toast.error(`Erreur : ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Section
       titre="Import d'un portefeuille"
-      description="Fichier Excel ALBARKA : l'en-tête est détecté automatiquement, quel que soit le nombre de lignes vides en haut.">
-      
+      description="Fichier Excel ALBARKA : l'en-tête est détecté automatiquement, quel que soit le nombre de lignes vides en haut."
+    >
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Champ label="Commercial" htmlFor="pf-commercial" className="w-52">
           <Select
             id="pf-commercial"
             value={commercialId}
-            onChange={(e) => setCommercialId(e.target.value)}>
-            
-            {store.commerciaux.map((c) =>
-            <option key={c.id} value={c.id}>
-                {c.dsmName}
-              </option>
-            )}
+            onChange={(e) => setCommercialId(e.target.value)}
+          >
+            {store.commerciaux.map((c) => (
+              <option key={c.id} value={c.id}>{c.dsmName}</option>
+            ))}
           </Select>
         </Champ>
         <Champ label="Nom du portefeuille" htmlFor="pf-nom" className="w-64">
@@ -47,24 +66,38 @@ function OngletImport() {
             id="pf-nom"
             value={nom}
             onChange={(e) => setNom(e.target.value)}
-            placeholder="Portefeuille EWANE Q4" />
-          
+            placeholder="Portefeuille EWANE Q4"
+          />
         </Champ>
       </div>
 
-      <FileDropzone
-        accept=".xlsx"
-        multiple={false}
-        legende="Colonnes attendues : Nom du client, numéro_ccial (MSISDN 237XXXXXXXXX), pos_profile."
-        onTermine={() => toast.success('Aperçu des 10 premiers clients prêt — confirmez pour enregistrer.')} />
-      
+      <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-albarka-black transition-colors bg-gray-50">
+        <UploadCloudIcon className="h-6 w-6 text-gray-400 mb-1" />
+        <span className="text-sm text-gray-500">
+          {fichier ? fichier.name : 'Cliquez pour sélectionner le fichier Excel (.xlsx)'}
+        </span>
+        <input
+          type="file"
+          accept=".xlsx"
+          className="hidden"
+          onChange={(e) => setFichier(e.target.files?.[0] ?? null)}
+        />
+      </label>
 
-      <p className="mt-3 text-xs text-albarka-muted">
-        Après lecture, les 10 premiers clients sont affichés pour vérification avant enregistrement
-        dans les tables portefeuilles et clients.
+      <p className="mt-2 text-xs text-albarka-muted">
+        Colonnes attendues : Nom du client, numéro_ccial (MSISDN 237XXXXXXXXX), pos_profile.
       </p>
-    </Section>);
 
+      <Button
+        variante="primaire"
+        onClick={lancer}
+        disabled={!fichier || !nom.trim() || loading}
+        className="mt-4"
+      >
+        {loading ? 'Import en cours…' : 'Créer le portefeuille'}
+      </Button>
+    </Section>
+  );
 }
 
 function LignePortefeuille({

@@ -16,6 +16,21 @@ import { formatMinutes, formatNombre } from '../utils/format';
 import { somme } from '../utils/business';
 import { exporterExcel } from '../utils/export';
 
+const CACHE_KEY = 'albarka.reactivite.resultats';
+
+function sauverCache(data: ReactiviteIndicateur[]) {
+  try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch { /* rien */ }
+}
+function lireCache(): ReactiviteIndicateur[] | null {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    return raw ? (JSON.parse(raw) as ReactiviteIndicateur[]) : null;
+  } catch { return null; }
+}
+function effacerCache() {
+  try { sessionStorage.removeItem(CACHE_KEY); } catch { /* rien */ }
+}
+
 // ── Graphique indicateur ───────────────────────────────────────────────────────
 
 function GraphiqueIndicateur({
@@ -61,8 +76,8 @@ export function Reactivite() {
   // Fichiers sélectionnés par l'utilisateur
   const [fichiers, setFichiers]     = useState<File[]>([]);
   const [loading, setLoading]       = useState(false);
-  // Résultats calculés depuis les CSV uploadés
-  const [resultats, setResultats]   = useState<ReactiviteIndicateur[] | null>(null);
+  // Résultats calculés depuis les CSV uploadés — restaurés depuis sessionStorage
+  const [resultats, setResultats]   = useState<ReactiviteIndicateur[] | null>(() => lireCache());
   // Résultats en base (fallback quand aucun CSV uploadé)
   const [baseData, setBaseData]     = useState<ReactiviteIndicateur[] | null>(null);
   const [baseLoading, setBaseLoading] = useState(false);
@@ -88,6 +103,7 @@ export function Reactivite() {
         );
       } else {
         setResultats(res);
+        sauverCache(res);
         toast.success(`Réactivité calculée pour ${res.length} commercial(aux).`);
       }
     } catch (err) {
@@ -184,7 +200,7 @@ export function Reactivite() {
                 Résultats calculés depuis les CSV uploadés.{' '}
                 <button
                   className="underline"
-                  onClick={() => { setResultats(null); setFichiers([]); }}
+                  onClick={() => { setResultats(null); setFichiers([]); effacerCache(); }}
                 >
                   Effacer et revenir aux données en base
                 </button>

@@ -1,45 +1,44 @@
 import React, { useState } from 'react';
-import { DownloadIcon, EraserIcon } from 'lucide-react';
+import { toast } from 'sonner';
+import { DownloadIcon, UploadCloudIcon } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Section, TitreBloc } from '../components/ui/Section';
 import { Tabs } from '../components/ui/Tabs';
 import { Button } from '../components/ui/Button';
-import { Champ, Select } from '../components/ui/Field';
-import { FileDropzone } from '../components/FileDropzone';
 import { DataTable } from '../components/DataTable';
 import { GrilleMetriques, MetricCard } from '../components/MetricCard';
 import { BarresHorizontales } from '../components/charts/Charts';
-import { BlocAsync, EtatVide, Squelette } from '../components/ui/States';
+import { EtatVide, Squelette } from '../components/ui/States';
 import { useAuth } from '../contexts/AuthContext';
-import { useAsync } from '../hooks/useAsync';
-import { getReactivite } from '../services/terrain';
-import { store } from '../services/store';
+import { getReactivite, calculerReactivite } from '../services/terrain';
 import type { ReactiviteIndicateur } from '../types';
 import { formatMinutes, formatNombre } from '../utils/format';
 import { somme } from '../utils/business';
 import { exporterExcel } from '../utils/export';
 
+// ── Graphique indicateur ───────────────────────────────────────────────────────
+
 function GraphiqueIndicateur({
   lignes,
   cle,
-  monetaire = false
-
-
-
-
-}: {lignes: ReactiviteIndicateur[];cle: keyof ReactiviteIndicateur;monetaire?: boolean;}) {
-  const donnees = lignes.
-  filter((l) => l[cle] !== null).
-  map((l) => ({ dsmName: l.dsmName, valeur: Number(l[cle]) })).
-  sort((a, b) => b.valeur - a.valeur);
+  titre,
+}: {
+  lignes: ReactiviteIndicateur[];
+  cle: keyof ReactiviteIndicateur;
+  titre: string;
+}) {
+  const donnees = lignes
+    .filter((l) => l[cle] !== null && l[cle] !== undefined)
+    .map((l) => ({ dsmName: l.dsmName, valeur: Number(l[cle]) }))
+    .sort((a, b) => b.valeur - a.valeur);
 
   if (!donnees.length) {
     return (
       <EtatVide
         titre="Données insuffisantes"
-        message="Cet indicateur nécessite l'horodatage complet et la colonne Balance des CSV bruts." />);
-
-
+        message="Cet indicateur nécessite l'horodatage complet et la colonne Balance des CSV bruts MTN."
+      />
+    );
   }
 
   return (
@@ -47,239 +46,289 @@ function GraphiqueIndicateur({
       donnees={donnees}
       cleLabel="dsmName"
       cleValeur="valeur"
-      monetaire={monetaire}
-      hauteur={260} />);
-
-
+      monetaire={false}
+      hauteur={260}
+      titre={titre}
+    />
+  );
 }
+
+// ── Page principale ────────────────────────────────────────────────────────────
 
 export function Reactivite() {
   const { peutDeposer } = useAuth();
-  const [efface, setEfface] = useState(false);
-  const [fiche, setFiche] = useState<string>('');
-  const reactivite = useAsync(() => getReactivite(), [efface]);
+
+  // Fichiers sélectionnés par l'utilisateur
+  const [fichiers, setFichiers]     = useState<File[]>([]);
+  const [loading, setLoading]       = useState(false);
+  // Résultats calculés depuis les CSV uploadés
+  const [resultats, setResultats]   = useState<ReactiviteIndicateur[] | null>(null);
+  // Résultats en base (fallback quand aucun CSV uploadé)
+  const [baseData, setBaseData]     = useState<ReactiviteIndicateur[] | null>(null);
+  const [baseLoading, setBaseLoading] = useState(false);
+
+  // Chargement des données en base au montage
+  React.useEffect(() => {
+    setBaseLoading(true);
+    getReactivite()
+      .then(setBaseData)
+      .catch(() => setBaseData([]))
+      .finally(() => setBaseLoading(false));
+  }, []);
+
+  const lancer = async () => {
+    if (fichiers.length === 0) { toast.error('Sélectionnez au moins un fichier CSV.'); return; }
+    setLoading(true);
+    try {
+      const res = await calculerReactivite(fichiers);
+      if (res.length === 0) {
+        toast.error(
+          'Aucun commercial identifié dans les fichiers. ' +
+          'Vérifiez que les aliases sont configurés dans Administration.'
+        );
+      } else {
+        setResultats(res);
+        toast.success(`Réactivité calculée pour ${res.length} commercial(aux).`);
+      }
+    } catch (err) {
+      toast.error(`Erreur : ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Données à afficher : calcul depuis CSV en priorité, base en fallback
+  const lignes: ReactiviteIndicateur[] = resultats ?? baseData ?? [];
+  const chargement = loading || (baseLoading && !baseData);
+
+  const exporter = () => {
+    exporterExcel('reactivite-commerciale', [
+      {
+        nom: 'Synthèse réseau',
+        lignes: [{
+          'Transactions analysées': somme(lignes.map((l) => l.nbTransactions)),
+          'Tx / jour moyen': Number((somme(lignes.map((l) => l.txParJour)) / (lignes.length || 1)).toFixed(1)),
+          Commerciaux: lignes.length,
+        }],
+      },
+      {
+        nom: 'Par commercial',
+        lignes: lignes.map((l) => ({
+          Commercial:                l.dsmName,
+          'Nb transactions':         l.nbTransactions,
+          'Jours actifs':            l.joursActifs,
+          'Tx / jour':               l.txParJour,
+          'Clients / jour':          l.clientsParJour,
+          'Temps mort médian (min)': l.tempsMortMedian ?? 'N/A',
+          'Temps mort max (min)':    l.tempsMortMax    ?? 'N/A',
+          'Recharge médiane (min)':  l.tempsRechargeMedian ?? 'N/A',
+          'Recharge min (min)':      l.tempsRechargeMin    ?? 'N/A',
+        })),
+      },
+    ]);
+    toast.success('Export téléchargé.');
+  };
 
   return (
     <div>
       <PageHeader
         titre="Réactivité Commerciale"
-        description="Rythme de travail relevé sur les CSV bruts MTN : cadence, clients touchés, temps morts et temps de recharge."
+        description="Rythme de travail depuis les CSV bruts MTN : cadence, clients touchés, temps morts et temps de recharge."
         actions={
-        <Button
-          icone={<EraserIcon className="h-4 w-4" />}
-          onClick={() => setEfface((v) => !v)}>
-          
-            Effacer les résultats
+          <Button icone={<DownloadIcon className="h-4 w-4" />} onClick={exporter} disabled={lignes.length === 0}>
+            Exporter
           </Button>
-        } />
-      
+        }
+      />
 
       <div className="space-y-6">
-        {peutDeposer &&
-        <Section
-          titre="Dépôt des CSV bruts"
-          description="L'alias configuré en base permet d'associer chaque fichier à son commercial ; l'association reste modifiable.">
-          
-            <FileDropzone
-            accept=".csv"
-            legende="Fichiers CSV bruts MTN avec horodatage complet et colonne Balance (ex. STEPHANE(7).csv)."
-            commerciaux={store.commerciaux.map((c) => ({ dsmName: c.dsmName, alias: c.alias }))} />
-          
+        {/* ── Zone d'upload ── */}
+        {peutDeposer && (
+          <Section
+            titre="Dépôt des CSV bruts"
+            description="Chaque fichier est analysé côté serveur : l'alias configuré en base identifie automatiquement le commercial."
+          >
+            <p className="text-xs text-albarka-muted mb-3">
+              Format attendu : CSV MTN avec colonnes <code>Date</code>, <code>From name</code>,{' '}
+              <code>To name</code>, <code>Amount</code>, <code>Balance</code> et horodatage complet.
+              Ex : <code>STEPHANE(7).csv</code>, <code>PARF-1-14.csv</code>.
+            </p>
+
+            <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-albarka-black transition-colors bg-gray-50">
+              <UploadCloudIcon className="h-6 w-6 text-gray-400 mb-1" />
+              <span className="text-sm text-gray-500">
+                {fichiers.length > 0
+                  ? `${fichiers.length} fichier(s) sélectionné(s)`
+                  : 'Cliquez pour sélectionner les CSV bruts MTN'}
+              </span>
+              <input
+                type="file"
+                accept=".csv"
+                multiple
+                className="hidden"
+                onChange={(e) => setFichiers(Array.from(e.target.files ?? []))}
+              />
+            </label>
+
+            <Button
+              variante="primaire"
+              onClick={lancer}
+              disabled={fichiers.length === 0 || loading}
+              className="mt-4"
+            >
+              {loading ? 'Calcul en cours…' : 'Calculer la réactivité'}
+            </Button>
+
+            {resultats && (
+              <p className="mt-2 text-xs text-green-700">
+                Résultats calculés depuis les CSV uploadés.{' '}
+                <button
+                  className="underline"
+                  onClick={() => { setResultats(null); setFichiers([]); }}
+                >
+                  Effacer et revenir aux données en base
+                </button>
+              </p>
+            )}
           </Section>
-        }
+        )}
 
-        <BlocAsync etat={reactivite} squelette={<Squelette lignes={8} />}>
-          {(lignes) => {
-            const selectionne = lignes.find((l) => l.dsmName === fiche) ?? lignes[0];
-            return (
-              <>
-                <Section
-                  titre="Synthèse réseau"
-                  description="Moyennes calculées sur les commerciaux disposant de données exploitables.">
-                  
-                  <GrilleMetriques colonnes={4}>
-                    <MetricCard
-                      libelle="Transactions analysées"
-                      valeur={formatNombre(somme(lignes.map((l) => l.nbTransactions)))}
-                      principale />
-                    
-                    <MetricCard
-                      libelle="Tx / jour moyen"
-                      valeur={formatNombre(somme(lignes.map((l) => l.txParJour)) / lignes.length)} />
-                    
-                    <MetricCard
-                      libelle="Clients / jour moyen"
-                      valeur={formatNombre(somme(lignes.map((l) => l.clientsParJour)) / lignes.length)} />
-                    
-                    <MetricCard
-                      libelle="Temps mort médian réseau"
-                      valeur={formatMinutes(
-                        somme(lignes.map((l) => l.tempsMortMedian ?? 0)) / (
-                        lignes.filter((l) => l.tempsMortMedian !== null).length || 1)
-                      )} />
-                    
-                  </GrilleMetriques>
-                </Section>
+        {/* ── Résultats ── */}
+        {chargement ? (
+          <Squelette lignes={8} />
+        ) : lignes.length === 0 ? (
+          <EtatVide
+            titre="Aucune donnée disponible"
+            message="Importez des fichiers CSV bruts MTN pour calculer les indicateurs de réactivité."
+          />
+        ) : (
+          <>
+            {/* Métriques réseau */}
+            <Section
+              titre="Synthèse réseau"
+              description="Moyennes calculées sur les commerciaux disposant de données exploitables."
+            >
+              <GrilleMetriques colonnes={4}>
+                <MetricCard
+                  libelle="Transactions analysées"
+                  valeur={formatNombre(somme(lignes.map((l) => l.nbTransactions)))}
+                  principale
+                />
+                <MetricCard
+                  libelle="Tx / jour moyen"
+                  valeur={formatNombre(somme(lignes.map((l) => l.txParJour)) / lignes.length)}
+                />
+                <MetricCard
+                  libelle="Clients / jour moyen"
+                  valeur={formatNombre(somme(lignes.map((l) => l.clientsParJour)) / lignes.length)}
+                />
+                <MetricCard
+                  libelle="Temps mort médian réseau"
+                  valeur={formatMinutes(
+                    somme(lignes.map((l) => l.tempsMortMedian ?? 0)) /
+                    (lignes.filter((l) => l.tempsMortMedian !== null).length || 1)
+                  )}
+                />
+              </GrilleMetriques>
+            </Section>
 
-                <Section
-                  titre="Indicateurs par commercial"
-                  description="« N/A » signale un indicateur non calculable faute de données suffisantes dans le CSV.">
-                  
-                  <DataTable
-                    colonnes={[
-                    { cle: 'dsmName', entete: 'Commercial' },
-                    { cle: 'nbTransactions', entete: 'Nb tx', numerique: true },
-                    { cle: 'joursActifs', entete: 'Jours actifs', numerique: true },
-                    { cle: 'txParJour', entete: 'Tx / jour', numerique: true },
-                    { cle: 'clientsParJour', entete: 'Clients / jour', numerique: true },
-                    {
-                      cle: 'tempsMortMedian',
-                      entete: 'Temps mort médian',
-                      numerique: true,
-                      rendu: (l) => formatMinutes(l.tempsMortMedian)
-                    },
-                    {
-                      cle: 'tempsMortMax',
-                      entete: 'Temps mort max',
-                      numerique: true,
-                      rendu: (l) => formatMinutes(l.tempsMortMax)
-                    },
-                    {
-                      cle: 'tempsRechargeMedian',
-                      entete: 'Recharge médiane',
-                      numerique: true,
-                      rendu: (l) => formatMinutes(l.tempsRechargeMedian)
-                    },
-                    {
-                      cle: 'tempsRechargeMin',
-                      entete: 'Recharge la + rapide',
-                      numerique: true,
-                      rendu: (l) => formatMinutes(l.tempsRechargeMin)
-                    }]
-                    }
-                    lignes={lignes}
-                    cleLigne={(l) => `reac-${l.commercialId}`}
-                    parPage={12}
-                    onExport={() =>
-                    exporterExcel('reactivite-commerciale', [
-                    {
-                      nom: 'Synthèse réseau',
-                      lignes: [
-                      {
-                        'Transactions analysées': somme(lignes.map((l) => l.nbTransactions)),
-                        'Tx / jour moyen': Number(
-                          (somme(lignes.map((l) => l.txParJour)) / lignes.length).toFixed(1)
-                        ),
-                        Commerciaux: lignes.length
-                      }]
-
-                    },
-                    {
-                      nom: 'Par commercial',
-                      lignes: lignes.map((l) => ({
-                        Commercial: l.dsmName,
-                        'Nb transactions': l.nbTransactions,
-                        'Jours actifs': l.joursActifs,
-                        'Tx / jour': l.txParJour,
-                        'Clients / jour': l.clientsParJour,
-                        'Temps mort médian (min)': l.tempsMortMedian ?? 'N/A',
-                        'Temps mort max (min)': l.tempsMortMax ?? 'N/A',
-                        'Recharge médiane (min)': l.tempsRechargeMedian ?? 'N/A',
-                        'Recharge min (min)': l.tempsRechargeMin ?? 'N/A'
-                      }))
-                    }]
-                    )
-                    } />
-                  
-                </Section>
-
-                <Section titre="Lecture graphique">
-                  <Tabs
-                    onglets={[
-                    {
-                      id: 'tx',
-                      libelle: 'Transactions / jour',
-                      contenu: <GraphiqueIndicateur lignes={lignes} cle="txParJour" />
-                    },
-                    {
-                      id: 'clients',
-                      libelle: 'Clients / jour',
-                      contenu: <GraphiqueIndicateur lignes={lignes} cle="clientsParJour" />
-                    },
-                    {
-                      id: 'mort',
-                      libelle: 'Temps mort',
-                      contenu: <GraphiqueIndicateur lignes={lignes} cle="tempsMortMedian" />
-                    },
-                    {
-                      id: 'recharge',
-                      libelle: 'Temps de recharge',
-                      contenu: <GraphiqueIndicateur lignes={lignes} cle="tempsRechargeMedian" />
-                    }]
-                    } />
-                  
-                </Section>
-
-                <Section
-                  titre="Fiche individuelle"
-                  actions={
-                  <Champ label="Commercial" htmlFor="fiche" className="w-52">
-                      <Select
-                      id="fiche"
-                      value={selectionne?.dsmName ?? ''}
-                      onChange={(e) => setFiche(e.target.value)}>
-                      
-                        {lignes.map((l) =>
-                      <option key={l.commercialId} value={l.dsmName}>
-                            {l.dsmName}
-                          </option>
-                      )}
-                      </Select>
-                    </Champ>
-                  }>
-                  
-                  {selectionne ?
-                  <div className="space-y-4">
-                      <TitreBloc>{selectionne.dsmName}</TitreBloc>
-                      <GrilleMetriques colonnes={4}>
-                        <MetricCard
-                        libelle="Transactions"
-                        valeur={formatNombre(selectionne.nbTransactions)}
-                        detail={`${selectionne.joursActifs} jours actifs`}
-                        principale />
-                      
-                        <MetricCard
-                        libelle="Cadence"
-                        valeur={formatNombre(selectionne.txParJour)}
-                        unite="tx/j" />
-                      
-                        <MetricCard
-                        libelle="Temps mort médian"
-                        valeur={formatMinutes(selectionne.tempsMortMedian)}
-                        detail={`max ${formatMinutes(selectionne.tempsMortMax)}`} />
-                      
-                        <MetricCard
-                        libelle="Temps de recharge"
-                        valeur={formatMinutes(selectionne.tempsRechargeMedian)}
-                        detail={`plus rapide ${formatMinutes(selectionne.tempsRechargeMin)}`} />
-                      
-                      </GrilleMetriques>
-                      <Button icone={<DownloadIcon className="h-4 w-4" />} taille="sm">
-                        Exporter la fiche
-                      </Button>
-                    </div> :
-
-                  <EtatVide
-                    titre="Aucun commercial analysé"
-                    message="Déposez des CSV bruts MTN pour produire les indicateurs de réactivité." />
-
-                  }
-                </Section>
-              </>);
-
-          }}
-        </BlocAsync>
+            {/* Tableau + graphiques via onglets */}
+            <Tabs
+              onglets={[
+                {
+                  id: 'tableau',
+                  libelle: 'Tableau',
+                  contenu: (
+                    <Section
+                      titre="Indicateurs par commercial"
+                      description="« N/A » signale un indicateur non calculable (données insuffisantes ou Balance absente)."
+                    >
+                      <DataTable
+                        colonnes={[
+                          { cle: 'dsmName',        entete: 'Commercial' },
+                          { cle: 'nbTransactions', entete: 'Nb tx',       numerique: true },
+                          { cle: 'joursActifs',    entete: 'Jours actifs', numerique: true },
+                          { cle: 'txParJour',      entete: 'Tx / jour',   numerique: true },
+                          { cle: 'clientsParJour', entete: 'Clients / j', numerique: true },
+                          {
+                            cle: 'tempsMortMedian',
+                            entete: 'Temps mort médian',
+                            numerique: true,
+                            rendu: (l) => formatMinutes(l.tempsMortMedian),
+                          },
+                          {
+                            cle: 'tempsMortMax',
+                            entete: 'Temps mort max',
+                            numerique: true,
+                            rendu: (l) => formatMinutes(l.tempsMortMax),
+                          },
+                          {
+                            cle: 'tempsRechargeMedian',
+                            entete: 'Recharge médiane',
+                            numerique: true,
+                            rendu: (l) => formatMinutes(l.tempsRechargeMedian),
+                          },
+                          {
+                            cle: 'tempsRechargeMin',
+                            entete: 'Recharge min',
+                            numerique: true,
+                            rendu: (l) => formatMinutes(l.tempsRechargeMin),
+                          },
+                        ]}
+                        lignes={lignes}
+                        cleLigne={(l) => `reac-${l.commercialId}`}
+                        parPage={12}
+                      />
+                    </Section>
+                  ),
+                },
+                {
+                  id: 'tx-jour',
+                  libelle: 'Tx / jour',
+                  contenu: (
+                    <Section titre="Transactions par jour — par commercial">
+                      <GraphiqueIndicateur lignes={lignes} cle="txParJour" titre="Tx / jour" />
+                    </Section>
+                  ),
+                },
+                {
+                  id: 'clients-jour',
+                  libelle: 'Clients / jour',
+                  contenu: (
+                    <Section titre="Clients touchés par jour — par commercial">
+                      <GraphiqueIndicateur lignes={lignes} cle="clientsParJour" titre="Clients / jour" />
+                    </Section>
+                  ),
+                },
+                {
+                  id: 'temps-mort',
+                  libelle: 'Temps mort',
+                  contenu: (
+                    <Section
+                      titre="Temps mort médian (minutes)"
+                      description="Écart médian entre deux transactions consécutives le même jour."
+                    >
+                      <GraphiqueIndicateur lignes={lignes} cle="tempsMortMedian" titre="Temps mort médian (min)" />
+                    </Section>
+                  ),
+                },
+                {
+                  id: 'recharge',
+                  libelle: 'Recharge',
+                  contenu: (
+                    <Section
+                      titre="Temps de recharge médian (minutes)"
+                      description="Durée médiane pour repasser au-dessus de 100 000 FCFA de balance."
+                    >
+                      <GraphiqueIndicateur lignes={lignes} cle="tempsRechargeMedian" titre="Recharge médiane (min)" />
+                    </Section>
+                  ),
+                },
+              ]}
+            />
+          </>
+        )}
       </div>
-    </div>);
-
+    </div>
+  );
 }

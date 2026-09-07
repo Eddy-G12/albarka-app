@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
-import { UploadCloudIcon } from 'lucide-react';
+import { DownloadIcon, UploadCloudIcon } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Section, TitreBloc } from '../components/ui/Section';
 import { Button } from '../components/ui/Button';
@@ -11,7 +11,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { BlocAsync, EtatVide, Squelette } from '../components/ui/States';
 import { useAsync } from '../hooks/useAsync';
 import { getRepartitionQr, getDatesQr } from '../services/qr';
-import { importerQr, type ResultatImportQr } from '../services/import';
+import { importerQr, telechargerImport, type ResultatImportQr } from '../services/import';
 import { formatNombre, formatPourcent, labelDate } from '../utils/format';
 
 export function SuiviQrCode() {
@@ -102,12 +102,33 @@ export function SuiviQrCode() {
         {resultat && (
           <Section titre={`Résultat — ${resultat.date_ref}`}>
             <GrilleMetriques colonnes={5}>
-              <MetricCard libelle="Agents traités"   valeur={formatNombre(resultat.nb_agents)}   principale />
-              <MetricCard libelle="Sans QR Code"     valeur={formatNombre(resultat.sans_qr)}     />
-              <MetricCard libelle="QR non utilisé"   valeur={formatNombre(resultat.non_utilise)} />
-              <MetricCard libelle="Risque inactivité" valeur={formatNombre(resultat.risque)}     />
-              <MetricCard libelle="Actifs"            valeur={formatNombre(resultat.actif)}      />
+              <MetricCard libelle="Agents traités"    valeur={formatNombre(resultat.nb_agents)}   principale />
+              <MetricCard libelle="Sans QR Code"      valeur={formatNombre(resultat.sans_qr)}     />
+              <MetricCard libelle="QR non utilisé"    valeur={formatNombre(resultat.non_utilise)} />
+              <MetricCard libelle="Risque inactivité" valeur={formatNombre(resultat.risque)}      />
+              <MetricCard libelle="Actifs"            valeur={formatNombre(resultat.actif)}       />
             </GrilleMetriques>
+
+            {resultat.id_import > 0 && (
+              <Button
+                variante="primaire"
+                icone={<DownloadIcon className="h-4 w-4" />}
+                onClick={async () => {
+                  try {
+                    await telechargerImport(
+                      resultat.id_import,
+                      `rapport-qr-${resultat.date_ref}.xlsx`,
+                    );
+                    toast.success('Rapport Excel téléchargé.');
+                  } catch (err) {
+                    toast.error(`Erreur : ${err instanceof Error ? err.message : String(err)}`);
+                  }
+                }}
+                className="mt-4"
+              >
+                Télécharger le rapport Excel
+              </Button>
+            )}
           </Section>
         )}
 

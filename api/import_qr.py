@@ -56,14 +56,15 @@ def _save_cache(df_classified: pd.DataFrame, date_iso: str) -> None:
 # ── Schéma de réponse ─────────────────────────────────────────────────────────
 
 class ResultatImportQr(BaseModel):
-    date_ref:   str
-    nb_agents:  int
-    sans_qr:    int
-    non_utilise: int
-    risque:     int
-    actif:      int
+    id_import:       int
+    date_ref:        str
+    nb_agents:       int
+    sans_qr:         int
+    non_utilise:     int
+    risque:          int
+    actif:           int
     fichier_rapport: str
-    message:    str
+    message:         str
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────
@@ -139,9 +140,13 @@ async def importer_qr(
     # Historique
     db.save_import("qr_code", date_iso, date_iso, chemin, nb_lignes=len(df_classified))
 
+    import_record = db.get_import("qr_code", date_iso)
+    id_import = import_record["id"] if import_record else -1
+
     counts = df_classified["statut"].value_counts()
 
     return ResultatImportQr(
+        id_import=id_import,
         date_ref=date_iso,
         nb_agents=len(df_classified),
         sans_qr=int(counts.get("Sans QR Code", 0)),

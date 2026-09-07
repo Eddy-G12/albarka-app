@@ -22,6 +22,7 @@ export interface ResultatImportTx {
 }
 
 export interface ResultatImportQr {
+  id_import:       number;
   date_ref:        string;
   nb_agents:       number;
   sans_qr:         number;

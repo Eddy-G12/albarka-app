@@ -40,6 +40,7 @@ router = APIRouter(prefix="/import", tags=["Import"])
 # ── Schéma de réponse ─────────────────────────────────────────────────────────
 
 class ResultatImportTx(BaseModel):
+    id_import:         int
     fichier:           str
     nb_lignes:         int
     points_par_jour:   float
@@ -86,6 +87,7 @@ async def importer_transactions(
 
         if df.empty:
             resultats.append(ResultatImportTx(
+                id_import=-1,
                 fichier=f.filename or cle, nb_lignes=0, points_par_jour=0.0,
                 commercial=None, alias=None, nb_clients_servis=0, appro_ok=False,
                 message="Aucune ligne exploitable après nettoyage.",
@@ -166,7 +168,12 @@ async def importer_transactions(
         date_donnees = str(df["Date"].max())
         db.save_import("transactions", cle, date_donnees, chemin, nb_lignes=len(df))
 
+        # Récupérer l'id de l'import enregistré
+        import_record = db.get_import("transactions", cle)
+        id_import = import_record["id"] if import_record else -1
+
         resultats.append(ResultatImportTx(
+            id_import=id_import,
             fichier=f.filename or cle,
             nb_lignes=len(df),
             points_par_jour=pts["moyenne_par_jour"],

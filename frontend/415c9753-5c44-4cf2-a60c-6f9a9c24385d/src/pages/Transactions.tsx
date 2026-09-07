@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
-import { UploadCloudIcon } from 'lucide-react';
+import { DownloadIcon, UploadCloudIcon } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Tabs } from '../components/ui/Tabs';
 import { Section, TitreBloc } from '../components/ui/Section';
@@ -13,7 +13,12 @@ import { BlocAsync, Squelette } from '../components/ui/States';
 import { useAuth } from '../contexts/AuthContext';
 import { useAsync } from '../hooks/useAsync';
 import { getClientsServis, getSynthesePointsTouches } from '../services/terrain';
-import { importerTransactions, type ResultatImportTx } from '../services/import';
+import {
+  importerTransactions,
+  telechargerImport,
+  telechargerTousImports,
+  type ResultatImportTx,
+} from '../services/import';
 import { store } from '../services/store';
 import { formatNombre, labelDate } from '../utils/format';
 import { exporterExcel } from '../utils/export';
@@ -81,27 +86,66 @@ function OngletImport() {
 
       {resultats.length > 0 && (
         <Section titre="Résultats du traitement">
+          {/* Bouton tout télécharger si plusieurs fichiers OK */}
+          {resultats.filter((r) => r.id_import > 0 && r.message === 'OK').length > 1 && (
+            <Button
+              icone={<DownloadIcon className="h-4 w-4" />}
+              onClick={async () => {
+                try {
+                  await telechargerTousImports(resultats);
+                  toast.success('Tous les fichiers téléchargés.');
+                } catch (err) {
+                  toast.error(`Erreur : ${err instanceof Error ? err.message : String(err)}`);
+                }
+              }}
+              className="mb-3"
+            >
+              Télécharger tous les classeurs
+            </Button>
+          )}
+
           <div className="space-y-2">
             {resultats.map((r, i) => (
               <div
                 key={i}
-                className={`rounded-md border px-4 py-3 text-sm ${
+                className={`flex items-center justify-between rounded-md border px-4 py-3 text-sm ${
                   r.message === 'OK'
                     ? 'border-green-200 bg-green-50 text-green-800'
                     : 'border-amber-200 bg-amber-50 text-amber-800'
                 }`}
               >
-                <strong>{r.fichier}</strong>
-                {r.message === 'OK' ? (
-                  <>
-                    {' '}— {formatNombre(r.nb_lignes)} lignes ·{' '}
-                    {r.points_par_jour.toFixed(1)} pts/jour
-                    {r.commercial && ` · Commercial : ${r.commercial}`}
-                    {r.nb_clients_servis > 0 && ` · ${r.nb_clients_servis} clients servis`}
-                    {r.appro_ok && ' · Appro extrait'}
-                  </>
-                ) : (
-                  <> — {r.message}</>
+                <span>
+                  <strong>{r.fichier}</strong>
+                  {r.message === 'OK' ? (
+                    <>
+                      {' '}— {formatNombre(r.nb_lignes)} lignes ·{' '}
+                      {r.points_par_jour.toFixed(1)} pts/jour
+                      {r.commercial && ` · ${r.commercial}`}
+                      {r.alias && ` (${r.alias})`}
+                      {r.nb_clients_servis > 0 && ` · ${r.nb_clients_servis} clients servis`}
+                      {r.appro_ok && ' · Appro ✓'}
+                    </>
+                  ) : (
+                    <> — {r.message}</>
+                  )}
+                </span>
+                {r.id_import > 0 && r.message === 'OK' && (
+                  <Button
+                    icone={<DownloadIcon className="h-3.5 w-3.5" />}
+                    taille="sm"
+                    onClick={async () => {
+                      try {
+                        await telechargerImport(
+                          r.id_import,
+                          r.fichier.replace('.csv', '.xlsx'),
+                        );
+                      } catch (err) {
+                        toast.error(`Erreur téléchargement : ${err instanceof Error ? err.message : String(err)}`);
+                      }
+                    }}
+                  >
+                    Télécharger
+                  </Button>
                 )}
               </div>
             ))}

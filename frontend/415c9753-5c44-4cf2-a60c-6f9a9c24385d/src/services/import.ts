@@ -10,6 +10,7 @@ import { api } from './api';
 // ── Types de retour ───────────────────────────────────────────────────────────
 
 export interface ResultatImportTx {
+  id_import:         number;
   fichier:           string;
   nb_lignes:         number;
   points_par_jour:   number;
@@ -139,4 +140,45 @@ export async function importerPortefeuille(
   form.append('commercial_id', String(commercialId));
   form.append('nom', nom);
   return postFormData<ResultatImportPortefeuille>('/import/portefeuille', form);
+}
+
+/**
+ * Télécharge le fichier Excel généré pour un import donné.
+ * GET /gestion/imports/{id}/download
+ */
+export function urlTelechargementImport(id: number): string {
+  const base = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '')
+    ?? 'http://localhost:8000';
+  return `${base}/gestion/imports/${id}/download`;
+}
+
+/**
+ * Déclenche le téléchargement direct d'un fichier Excel d'import.
+ * Injecte le JWT dans les headers via fetch puis crée un lien temporaire.
+ */
+export async function telechargerImport(id: number, nomFichier: string): Promise<void> {
+  const res = await fetch(urlTelechargementImport(id), { headers: authHeaders() });
+  if (!res.ok) throw new Error(`Erreur ${res.status} lors du téléchargement.`);
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = nomFichier.endsWith('.xlsx') ? nomFichier : `${nomFichier}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Télécharge tous les fichiers en ZIP (fetch séquentiel + JSZip-less via zip natif).
+ * Crée un lien de téléchargement pour chaque fichier individuellement.
+ */
+export async function telechargerTousImports(resultats: ResultatImportTx[]): Promise<void> {
+  const valides = resultats.filter((r) => r.id_import > 0 && r.message === 'OK');
+  for (const r of valides) {
+    await telechargerImport(r.id_import, r.fichier.replace('.csv', '.xlsx'));
+    // Petite pause pour éviter de saturer le navigateur
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
 }
